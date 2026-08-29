@@ -1,0 +1,27 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      # The gofumpt version is pinned because its formatting rules can change
+      # between releases.
+      - name: gofumpt
+        run: |
+          go install mvdan.cc/gofumpt@v0.10.0
+          test -z "$(gofumpt -l .)"
+      - name: go vet
+        run: go vet ./...
+      - name: go test
+        run: go test -race ./...

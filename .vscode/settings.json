@@ -1,0 +1,24 @@
+{
+	"editor.codeActionsOnSave": {
+		"source.organizeImports": "explicit"
+	},
+	"editor.formatOnSave": true,
+	"editor.tabSize": 4,
+	"editor.useTabStops": true,
+	"[go]": {
+		"editor.defaultFormatter": "golang.go",
+	},
+	"go.coverOnSave": true,
+	"go.diagnostic.vulncheck": "Off",
+	"go.lintOnSave": "file",
+	"go.lintTool": "golangci-lint-v2",
+	"go.toolsManagement.autoUpdate": false,
+	"go.vetOnSave": "package",
+	"gopls": {
+		"formatting.gofumpt": true,
+		"completionDocumentation": false,
+		"completeUnimported": false,
+		"deepCompletion": false,
+		"hoverKind": "SynopsisDocumentation",
+	},
+}
