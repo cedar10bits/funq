@@ -4,7 +4,6 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/cedar10bits/funq.svg)](https://pkg.go.dev/github.com/cedar10bits/funq)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![CI](https://github.com/cedar10bits/funq/actions/workflows/ci.yml/badge.svg)](https://github.com/cedar10bits/funq/actions/workflows/ci.yml)
-[![Go Report Card](https://goreportcard.com/badge/github.com/cedar10bits/funq)](https://goreportcard.com/report/github.com/cedar10bits/funq)
 
 Type-safe, composable utilities for functional programming in Go.
 
