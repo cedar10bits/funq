@@ -12,16 +12,14 @@ linters:
     - unconvert    # redundant type conversions
   exclusions:
     rules:
-      # These declarations spell out the type on purpose: the test is that a
-      # method value (chain.Run / track.Play) is assignable to the exported
-      # function type. Fp/Fe are type aliases, so staticcheck sees the
-      # annotation as redundant (ST1023); here it is the assertion.
+      # compose_test.go spells out the function type on a var on purpose:
+      # that annotation is the method-value interop assertion under test.
       - path: compose_test\.go
         linters: [staticcheck]
         text: 'ST1023|QF1011'
 
 formatters:
-  enable: [] # gofumpt runs as its own pinned CI step
+  enable: []
 
 issues:
   max-issues-per-linter: 0
