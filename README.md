@@ -184,6 +184,11 @@ result := funq.From(-5, -2, 0, 3, 4, 7, 8, 12).
 // Output: [4 8 12]
 ```
 
+The comparisons are `LessThan`, `GreaterThan`, `AtMost`, `AtLeast`, `Equal`,
+`Between` and `OneOf`; the operators that combine them are `Not`, `And`, `Or`,
+`Xor`, `Nand`, `Nor`, `Xnor` and `Implies`, alongside the constant predicates
+`True` and `False`.
+
 **Function Composition** – Compose higher-order functions:
 ```go
 addThenFilter := func(n int) funq.Flow[int] {
@@ -203,21 +208,11 @@ result2 := pipeline.Run(10)	// Output: [20]
 For the complete, up-to-date list of methods and functions, see
 pkg.go.dev: https://pkg.go.dev/github.com/cedar10bits/funq
 
-A few entry points, to get oriented:
-- `From(values...)`, `FromFn(n, fn)`, `FromSeq(seq)`: create a Flow from values,
-  a function, or an iterator. `Flow.Seq` goes the other way, returning an
-  `iter.Seq[T]`
-- `Cache()`: materialize a Flow to run the upstream pipeline exactly once, then
+What that index will not tell you:
+- `Cache()` materializes a Flow to run the upstream pipeline exactly once, then
   reuse the result across multiple terminal operations
-- `Some(x)`, `None[int]()`, `FromPtr(ptr)`, `FromResult(v, err)`: create Optionals.
-  `Optional.OrErr(err)` and `ErrOnNone(f, err)` go back to `(value, error)`
-- `Compose(f).Then(g)...Run(x)`: build a plain-function pipeline one stage at
-  a time. `Groove(f).Jam(g)...Play(x)` is the error-returning counterpart,
-  short-circuiting on the first error
-- `Identity`, `Const(v)`: pass as the key or step argument of `SortBy`/`MinBy`/
-  `Map` and friends. `Const`'s argument type is never inferred, so name it:
-  `Const[int]("x")` is a `func(int) string`
-- Predicates (`And`, `Or`, `LessThan`, `Between`, `OneOf`, ...) are designed to plug directly into `Filter`/`Map`
+- `Const`'s argument type is not determined by its value and is never inferred,
+  so name it: `Const[int]("x")` is a `func(int) string`
 - `Flow.To(fn)` applies a `func(Flow[T]) U` to the Flow itself, keeping the
   free functions in a fluent chain: `f.To(funq.Chunk[int](2))`,
   `f.To(funq.Distinct)`
