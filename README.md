@@ -9,44 +9,35 @@ Type-safe, composable utilities for functional programming in Go.
 
 ## Overview
 
-funq is a Go library that provides type-safe functional programming utilities using generics.
-It offers fluent, value-typed sequences, null-safe value handling, and function composition.
+funq provides type-safe functional programming utilities built on generics:
+fluent, value-typed sequences, null-safe value handling, and composition of
+fallible functions (`Groove`). The standard library's `iter`, `slices`, and
+`maps` do not address that last one at all.
 
-`Flow[T]` and `Optional[T]` are concrete value types (not interfaces). This lets
-their `Map`/`FlatMap` methods (and, on `Flow`, `Fold`) carry their own type
-parameter, so a chain can change the element type and stay fluent — a
-capability that requires the parameterized methods added in Go 1.27.
+`Flow[T]` and `Optional[T]` are concrete value types, so their `Map`/`FlatMap`
+methods (and `Flow.Fold`) can each carry a type parameter — a chain changes
+element type and stays fluent. That is what funq needs Go 1.27's parameterized
+methods for.
 
-## When to reach for funq (vs the standard library)
+The names lean into the pun: data finds its `Flow`, and fallible steps find their
+`Groove` — a `Track` you `Jam` stages onto, then `Play`.
 
-Go 1.23+'s `iter`, `slices`, and `maps` packages cover a lot of ground. funq
-does not compete with them for one-off transforms — it targets the cases they
-leave open.
+```go
+// One direction to read, top to bottom, instead of nested calls inside-out.
+squares := funq.From(1, 2, 3, 4, 5, 6).
+	Filter(func(n int) bool { return n%2 == 0 }).
+	Map(func(n int) int { return n * n }).
+	Slice() // [4 16 36]
 
-Prefer the standard library (or a plain loop) when:
+// Groove chains fallible steps (any func(T) (U, error)); the first failure
+// short-circuits the rest.
+checkout := funq.Groove(findCart).  // userID -> (Cart, error)     SELECT ...
+	Jam(reserveStock).              // Cart   -> (Cart, error)     UPDATE ...
+	Jam(chargeAndRecord)            // Cart   -> (Receipt, error)  INSERT ...
 
-- The transform is one or two steps. `slices.Contains`, `slices.Sorted`, or a
-  small `for` loop is shorter and has zero overhead.
-- The code is a hot path that scans every element — a Flow pipeline is
-  roughly an order of magnitude slower than a raw loop (see
-  [Performance](#performance)).
-
-Prefer funq when:
-
-- The pipeline has three or more steps, or changes element type mid-chain.
-  Nested `slices.X(slices.Y(...))` calls read inside-out. No standard
-  library iterator adapter changes element type fluently.
-- You need operations the standard library does not provide: `GroupBy`, `Partition`,
-  `Zip`, `Optional`, or railway-oriented error handling (`Groove`).
-- A lazy source lets a short-circuiting terminal (`First`, `Find`, `Any`) —
-  or `Take`, which stops the scan the same way without ending the chain — stop
-  early instead of materializing everything (see [Performance](#performance)).
-
-The choice is not all-or-nothing: `Flow.Seq` returns a standard `iter.Seq[T]`,
-so a funq chain can feed straight into standard library iterator adapters
-that consume one. `FromSeq` goes the other way, building a lazy funq chain from
-an existing iterator (e.g. `slices.Values`, `maps.Keys`, or a hand-rolled
-generator) without materializing it first.
+_, err := checkout.Play(userID)
+// err is nil, or e.g. "funq: Groove pipeline failed at stage 2 of 3: SKU-42 out of stock"
+```
 
 ## Installation
 
@@ -54,11 +45,40 @@ generator) without materializing it first.
 go get github.com/cedar10bits/funq
 ```
 
-## Usage Examples
+Requires Go 1.27 or later; there is no build for earlier versions.
 
-A taste of each type below. pkg.go.dev has runnable, compiler-verified
-examples for more operations than shown here, including `SortBy`, `GroupBy`,
-`Zip`, `Partition`, and `Chunk`:
+## When to reach for funq (vs the standard library)
+
+Go 1.23+'s `iter`, `slices`, and `maps` handle one-off transforms well. funq
+targets what they leave open.
+
+Stay with the standard library or a hand-written loop when the transform is one
+or two steps, or on a hot path that scans every element — a Flow pipeline is
+roughly an order of magnitude slower than a hand-written loop (see the
+[Performance](#performance) section).
+
+Reach for funq when:
+
+- a chain has several steps or changes element type mid-chain — it reads
+  top-to-bottom instead of inside-out;
+- you want something the standard library has no equivalent for: the `GroupBy` /
+  `Zip` operations, an `Optional` type, or error-aware composition (`Groove`);
+- a lazy source lets a short-circuiting terminal stop early instead of
+  materializing the whole sequence;
+- honestly, it just feels good to write — a top-to-bottom chain is nicer to
+  compose and to revisit than nested calls or a scratch slice and a loop.
+
+It is not all-or-nothing: `Flow.Seq` yields a standard `iter.Seq[T]` and
+`FromSeq` consumes one, so funq chains and standard-library iterators compose in
+either direction.
+
+## The types
+
+funq has three: `Flow` for sequences, `Optional` for a value that may be absent,
+and the `Groove` / `Compose` builders for function pipelines.
+
+pkg.go.dev has runnable, compiler-verified examples for more operations than
+shown below, including `SortBy`, `GroupBy`, `Zip`, `Partition`, and `Chunk`:
 https://pkg.go.dev/github.com/cedar10bits/funq#pkg-examples
 
 ### Flow - Slice Operations
@@ -96,112 +116,52 @@ val := funq.Some(42).
 fmt.Println(val.OrElse("none")) // Output: 84
 ```
 
-Optional is decoupled from Flow: it offers a small, focused API
-(`Map`, `FlatMap`, `Filter`, `OrElse`, `OrElseGet`, `Get`, `MustGet`, `Or`, `Ptr`,
-`String`, ...).
-Use `AsFlow()` or `Seq()` to bridge into the full Flow API.
+Optional is decoupled from Flow, with a small focused API; `AsFlow()` / `Seq()`
+bridge into the full Flow API. It also bridges Go's `(value, error)` idiom both
+ways: `FromResult` takes an error-returning call and keeps just presence, while
+`OrErr` / `ErrOnNone` turn a `None` back into an error — so an `Optional`-returning
+stage slots into a [Groove](#groove---error-aware-composition-railway-oriented)
+pipeline.
 
-Optional also bridges to Go's `(value, error)` idiom.
-`FromResult(strconv.Atoi(s))` takes an error-returning call directly, keeping
-presence and dropping the error. `OrErr(err)` goes the other way, turning a `None`
-back into a failure so an `Optional`-returning terminal like `Find` can be returned
-straight from an error-returning function. `ErrOnNone(f, err)` wraps `OrErr` in
-point-free form, so an `Optional`-returning stage drops into a
-[Groove](#groove---error-aware-composition-railway-oriented) pipeline's `Jam`
-call without a closure.
-
-#### JSON
-
-Because an Optional is often returned from a chain and then serialized (e.g. in
-an HTTP response), it implements `json.Marshaler` / `json.Unmarshaler`:
-
-```go
-type Profile struct {
-	Name  string                `json:"name"`
-	Email funq.Optional[string] `json:"email"`           // null when None
-	Phone funq.Optional[string] `json:"phone,omitzero"`  // omitted when None
-}
-
-// Some(v) -> v, None -> null. On decode, an absent field or null becomes None.
-b, _ := json.Marshal(Profile{Name: "Ada", Email: funq.Some("ada@example.com")})
-// {"name":"Ada","email":"ada@example.com"}
-```
-
-`Optional` also implements `IsZero`, so the `json:",omitzero"` tag (Go 1.24+)
-drops a `None` field entirely, matching the zero value being `None`.
-
-> Scope: JSON support reflects Optional's role as a fluent chain / return
-> value that may be serialized, not a persisted struct-field type — see the
-> `Optional` type documentation for the full rationale, including why
-> `sql.Scanner`/`driver.Valuer` aren't implemented instead.
+It implements `json.Marshaler` / `json.Unmarshaler` and is `omitzero`-aware
+(`Some(v)` ↔ `v`, `None` ↔ `null` or an absent field). It targets a value
+serialized in passing, not a persisted struct field; the type docs cover why
+`sql.Scanner` / `driver.Valuer` are deliberately absent.
 
 ### Groove - Error-Aware Composition (Railway-Oriented)
 
-```go
-doubleOrError := func(n int) (int, error) {
-	if n > 1000 {
-		return 0, fmt.Errorf("number too large: %d", n)
-	}
-	return n * 2, nil
-}
+The funk in `funq`: the first error short-circuits the rest — railway-oriented
+programming.
 
-// Groove(f) cuts the first stage. Each Jam appends exactly one more.
-// string -> (int, error) -> (int, error) -> (string, error)
-parseDoubleStringify := funq.Groove(strconv.Atoi).
-	Jam(doubleOrError).
-	Jam(funq.NilError(strconv.Itoa))
+- Build it with `Groove(first).Jam(next)...` — one `Jam` per stage; stages may
+  change type.
+- Non-`func(T) (U, error)` stages come in through an adapter: `NilError` for a
+  plain function, `ErrOnNone` for one returning an `Optional`.
+- `Compose` / `Then` / `Run` mirror this for steps that cannot fail —
+  `Compose(f).Then(g).Run(x)`.
 
-result, err := parseDoubleStringify.Play("21")
-// result: "42", err: nil
-```
-
-A `Track` has no fixed length: keep calling `Jam` for as many stages as the
-pipeline needs. The built value is reusable across inputs. Since `Play` is itself an
-`Fe[T0, T1]` method value, it drops straight into anywhere a plain
-error-returning function is expected — including as a stage of another
-`Track` via `inner.Play`. `Compose`/`Then`/`Run` are the same shape for
-stages that cannot fail (see
-[Utilities for Flow and Groove](#utilities-for-flow-and-groove) below).
-
-On failure, `Play` stops at the stage that failed and returns an error
-reporting its position and the pipeline's stage count:
+`Play` runs the pipeline. On failure, the returned error names the failing
+stage's position and the pipeline's length:
 
 ```
 funq: Groove pipeline failed at stage 3 of 5: <underlying error>
 ```
 
-A stage that reports absence rather than failure joins the pipeline through `ErrOnNone`;
-see [Optional](#optional---null-safe-values).
+## Predicates
 
-### Utilities for Flow and Groove
-
-**Predicates** – Build logic for filtering and validation:
+Build logic for `Flow.Filter` and validation:
 ```go
-// Use predicates with Flow.Filter()
 result := funq.From(-5, -2, 0, 3, 4, 7, 8, 12).
 	Filter(funq.And(funq.GreaterThan(0), func(v int) bool { return v%2 == 0 })).
 	Slice()
 // Output: [4 8 12]
 ```
 
-The comparisons are `LessThan`, `GreaterThan`, `AtMost`, `AtLeast`, `Equal`,
-`Between` and `OneOf`; the operators that combine them are `Not`, `And`, `Or`,
-`Xor`, `Nand`, `Nor`, `Xnor` and `Implies`, alongside the constant predicates
-`True` and `False`.
-
-**Function Composition** – Compose higher-order functions:
-```go
-addThenFilter := func(n int) funq.Flow[int] {
-	return funq.From(n).
-		Map(func(v int) int { return v + 10 }).
-		Filter(funq.GreaterThan(15))
-}
-
-// A no-arg method is already usable as a method expression
-pipeline := funq.Compose(addThenFilter).Then(funq.Flow[int].Slice)
-result1 := pipeline.Run(5)	// Output: []
-result2 := pipeline.Run(10)	// Output: [20]
-```
+- Comparisons: `LessThan`, `GreaterThan`, `AtMost`, `AtLeast`, `Equal`,
+  `Between`, `OneOf`
+- Combining operators: `Not`, `And`, `Or`, `Xor`, `Nand`, `Nor`, `Xnor`,
+  `Implies`
+- Constants: `True`, `False`
 
 ## API Reference
 
@@ -223,14 +183,20 @@ What that index will not tell you:
 
 ## Performance
 
-Flow is roughly an order of magnitude slower than a raw loop on a full traversal —
-its value is readability and composition, not raw throughput. Laziness pays off on
-early exit from a lazy source (short-circuiting terminals like `First`, `Find`,
-`Any`, or `Take` without ending the chain), turning an O(N) computation into O(k).
-A terminal operation may re-run the pipeline from the source each time. Use
-`Cache()` to materialize an expensive pipeline once and reuse it. `Count()` and
-`IsEmpty()` are the exception — when the element count is statically known they
-answer from it without traversing at all.
+Flow is roughly an order of magnitude slower than a hand-written loop on a full
+traversal — its value is readability and composition, not raw throughput. Most of
+that gap is the cost of composing over `iter.Seq` at all (~6x); funq itself adds
+only ~1.3x, a fixed ~7 ns per element that disappears once the per-element work is
+non-trivial.
+
+Laziness pays off on early exit from a lazy source: short-circuiting terminals
+like `First`, `Find`, `Any`, or `Take` (without ending the chain) turn an O(N)
+computation into O(k).
+
+A terminal operation may re-run the whole pipeline from the source each time;
+`Cache()` avoids that. `Count()` and `IsEmpty()` are the exception — when the
+element count is statically known they answer from it without traversing at all.
+
 See [docs/performance.md](docs/performance.md) for the full benchmark breakdown,
 methodology, and reproduce commands.
 
@@ -238,9 +204,8 @@ methodology, and reproduce commands.
 
 funq follows [Semantic Versioning](https://semver.org/). It stays on `0.x`
 for now, so the API may change between minor versions. Breaking changes are
-called out in [CHANGELOG.md](CHANGELOG.md) rather than silently shipped.
-`v1.0.0` is not planned on a fixed schedule — it will happen once the API
-has settled, not simply once Go 1.27 reaches GA.
+called out in [CHANGELOG.md](CHANGELOG.md). `v1.0.0` will happen once the API
+has settled, not on a fixed schedule.
 
 ## License
 
