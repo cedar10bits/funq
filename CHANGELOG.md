@@ -31,5 +31,4 @@ below rest on parameterized methods.
 For the complete API, see
 [pkg.go.dev](https://pkg.go.dev/github.com/cedar10bits/funq).
 
-[Unreleased]: https://github.com/cedar10bits/funq/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/cedar10bits/funq/releases/tag/v0.1.0
