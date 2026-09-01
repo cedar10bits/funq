@@ -317,6 +317,41 @@ func ExampleErrOnNone() {
 	// true
 }
 
+func ExampleNilError() {
+	// A Groove stage has to return an error, so a plain function is lifted
+	// into one whose error is always nil.
+	pipeline := funq.Groove(strconv.Atoi).
+		Jam(funq.NilError(func(n int) int { return n * 2 }))
+
+	fmt.Println(pipeline.Play("21"))
+	// Output: 42 <nil>
+}
+
+func ExamplePanicOnError() {
+	// The reverse bridge, for a step that cannot fail on valid input. The panic
+	// value wraps the original error, so a recover can inspect it.
+	atoi := funq.PanicOnError(strconv.Atoi)
+
+	defer func() {
+		err, _ := recover().(error)
+		fmt.Println(errors.Is(err, strconv.ErrSyntax))
+	}()
+
+	fmt.Println(funq.From("1", "2", "3").Map(atoi).Slice())
+	fmt.Println(funq.From("oops").Map(atoi).Slice())
+	// Output:
+	// [1 2 3]
+	// true
+}
+
+func ExampleIgnoreError() {
+	// Failures collapse to a fallback value instead of stopping the pipeline.
+	atoiOrZero := funq.IgnoreError(strconv.Atoi, 0)
+
+	fmt.Println(funq.From("1", "two", "3").Map(atoiOrZero).Slice())
+	// Output: [1 0 3]
+}
+
 func ExampleFlow_Filter() {
 	// Predicates combine with And/Or/Not and plug into Filter.
 	result := funq.From(-5, -2, 0, 3, 4, 7, 8, 12).
