@@ -3,7 +3,9 @@ package funq
 import (
 	"errors"
 	"fmt"
+	"runtime"
 	"strconv"
+	"sync"
 	"testing"
 )
 
@@ -13,8 +15,8 @@ type chainCase struct {
 	want int
 }
 
-// runChainCases calls fn once per case, so the same built Chain/Track is
-// exercised across every input.
+// runChainCases calls fn once per case, so the same built Chain is exercised
+// across every input.
 func runChainCases(t *testing.T, fn func(string) int, tests []chainCase) {
 	t.Helper()
 	for _, tc := range tests {
@@ -101,9 +103,7 @@ func runTrackCases(t *testing.T, fn func(string) (int, error), tests []trackCase
 			got, err := fn(tc.in)
 			assertEqual(t, tc.want, got)
 			if tc.wantErr {
-				if err == nil {
-					t.Errorf("want an error, got nil")
-				}
+				mustErr(t, err)
 			} else if err != nil {
 				t.Errorf("unexpected error: %v", err)
 			}
@@ -179,8 +179,8 @@ func TestTrackLengths(t *testing.T) {
 	})
 }
 
-// bang and boom are the stage functions shared by the Track failure-position
-// tests below.
+// bang and boom are the stage functions shared by the Track tests below that
+// need a failing stage: TestTrackFailurePosition and TestTrackOnBreak.
 func bang(s string) (string, error) { return s + "!", nil }
 
 func boom(string) (string, error) { return "", errors.New("boom") }
@@ -229,19 +229,14 @@ func TestTrackFailurePosition(t *testing.T) {
 			t.Parallel()
 			track := buildTrack(tc.stages, tc.failAt)
 			_, err := track.Play("a")
-			if err == nil {
-				t.Fatalf("want an error, got nil")
-			}
+			mustErr(t, err)
 
 			wantMsg := fmt.Sprintf(
 				"funq: Groove pipeline failed at stage %d of %d: boom", tc.failAt, tc.stages,
 			)
 			assertEqual(t, wantMsg, err.Error())
 
-			var ge *grooveError
-			if !errors.As(err, &ge) {
-				t.Fatalf("want errors.As(%v, %T) to succeed, got false", err, ge)
-			}
+			ge := mustGrooveError(t, err)
 			assertEqual(t, tc.failAt, ge.stage)
 			assertEqual(t, tc.stages, ge.of)
 		})
@@ -288,9 +283,7 @@ func TestTrackErrorPropagation(t *testing.T) {
 		Jam(func(int) (int, error) { return 0, sentinel })
 
 	_, err := track.Play("42")
-	if err == nil {
-		t.Fatalf("want an error, got nil")
-	}
+	mustErr(t, err)
 	if !errors.Is(err, sentinel) {
 		t.Errorf("want errors.Is(%v, %v), got false", err, sentinel)
 	}
@@ -317,9 +310,7 @@ func TestTrackNestedPipeline(t *testing.T) {
 		Jam(NilError(strconv.Itoa))
 
 	_, err := outer.Play("21")
-	if err == nil {
-		t.Fatalf("want an error, got nil")
-	}
+	mustErr(t, err)
 	if !errors.Is(err, sentinel) {
 		t.Errorf("want errors.Is(%v, %v), got false", err, sentinel)
 	}
@@ -329,6 +320,368 @@ func TestTrackNestedPipeline(t *testing.T) {
 	wantMsg := "funq: Groove pipeline failed at stage 2 of 3: " +
 		"funq: Groove pipeline failed at stage 2 of 2: inner boom"
 	assertEqual(t, wantMsg, err.Error())
+}
+
+// mustGrooveError returns the *grooveError err carries, failing the test if
+// it carries none.
+func mustGrooveError(t *testing.T, err error) *grooveError {
+	t.Helper()
+	ge, ok := errors.AsType[*grooveError](err)
+	if !ok {
+		t.Fatalf("want errors.AsType[*grooveError](%v) to succeed, got false", err)
+	}
+	return ge
+}
+
+// TestTrackOnBreak covers the compensation OnBreak registers: it runs only
+// when a later stage fails or panics, using the value held at registration.
+func TestTrackOnBreak(t *testing.T) {
+	t.Parallel()
+
+	t.Run("NotCalledOnSuccess", func(t *testing.T) {
+		t.Parallel()
+		calls := 0
+		track := Groove(bang).
+			OnBreak(func(string) error { calls++; return nil }).
+			Jam(bang)
+
+		got, err := track.Play("a")
+		mustNoErr(t, err)
+		assertEqual(t, "a!!", got)
+		assertEqual(t, 0, calls)
+	})
+
+	t.Run("CalledOnLaterFailure", func(t *testing.T) {
+		t.Parallel()
+		var undone []string
+		track := Groove(bang).
+			OnBreak(func(s string) error { undone = append(undone, s); return nil }).
+			Jam(boom)
+
+		got, err := track.Play("a")
+		assertEqual(t, "", got)
+		assertEqual(t, []string{"a!"}, undone)
+		assertEqual(t, "funq: Groove pipeline failed at stage 2 of 2: boom", err.Error())
+		ge := mustGrooveError(t, err)
+		assertEqual(t, 2, ge.stage)
+		assertEqual(t, 2, ge.of)
+	})
+
+	t.Run("LIFOOrder", func(t *testing.T) {
+		t.Parallel()
+		var order []int
+		record := func(n int) func(string) error {
+			return func(string) error { order = append(order, n); return nil }
+		}
+		track := Groove(bang).
+			OnBreak(record(1)).
+			Jam(bang).
+			OnBreak(record(2)).
+			Jam(bang).
+			OnBreak(record(3)).
+			Jam(boom)
+
+		_, err := track.Play("a")
+		mustErr(t, err)
+		assertEqual(t, []int{3, 2, 1}, order)
+	})
+
+	// The mirror of CalledOnLaterFailure: OnBreak registers once its value
+	// exists, so one attached to the failing stage is never reached.
+	t.Run("NotCalledWhenItsOwnStageFails", func(t *testing.T) {
+		t.Parallel()
+		calls := 0
+		track := Groove(bang).
+			Jam(boom).
+			OnBreak(func(string) error { calls++; return nil })
+
+		_, err := track.Play("a")
+		mustErr(t, err)
+		assertEqual(t, 0, calls)
+	})
+
+	t.Run("StageNumberingUnaffected", func(t *testing.T) {
+		t.Parallel()
+		noop := func(string) error { return nil }
+		track := Groove(bang).
+			OnBreak(noop).
+			Jam(bang).
+			OnBreak(noop).
+			Jam(boom).
+			OnBreak(noop)
+
+		_, err := track.Play("a")
+		mustErr(t, err)
+		assertEqual(t, "funq: Groove pipeline failed at stage 3 of 3: boom", err.Error())
+		ge := mustGrooveError(t, err)
+		assertEqual(t, 3, ge.stage)
+		assertEqual(t, 3, ge.of)
+	})
+
+	t.Run("CompensationErrorJoined", func(t *testing.T) {
+		t.Parallel()
+		track := Groove(bang).
+			OnBreak(func(string) error { return errSentinel }).
+			Jam(boom)
+
+		got, err := track.Play("a")
+		assertEqual(t, "", got)
+		if !errors.Is(err, errSentinel) {
+			t.Errorf("want errors.Is(%v, %v), got false", err, errSentinel)
+		}
+		ge := mustGrooveError(t, err)
+		assertEqual(t, 2, ge.stage)
+		assertEqual(t, 2, ge.of)
+		want := "funq: Groove pipeline failed at stage 2 of 2: boom\n" +
+			"funq: rollback for stage 1 failed: sentinel"
+		assertEqual(t, want, err.Error())
+	})
+
+	// Two failing compensations join in rollback order. errors.Is still
+	// reaches each of them through the joined error's multi-unwrap.
+	t.Run("EveryCompensationErrorJoined", func(t *testing.T) {
+		t.Parallel()
+		errFirst := errors.New("first undo")
+		errSecond := errors.New("second undo")
+		track := Groove(bang).
+			OnBreak(func(string) error { return errFirst }).
+			Jam(bang).
+			OnBreak(func(string) error { return errSecond }).
+			Jam(boom)
+
+		_, err := track.Play("a")
+		for _, want := range []error{errFirst, errSecond} {
+			if !errors.Is(err, want) {
+				t.Errorf("want errors.Is(%v, %v), got false", err, want)
+			}
+		}
+		want := "funq: Groove pipeline failed at stage 3 of 3: boom\n" +
+			"funq: rollback for stage 2 failed: second undo\n" +
+			"funq: rollback for stage 1 failed: first undo"
+		assertEqual(t, want, err.Error())
+	})
+
+	// A panicking stage unwinds past Play's normal error handling, so rollback
+	// runs from a defer — and the panic must reach the caller's recover unaltered.
+	t.Run("PanicRunsCompensationsLIFO", func(t *testing.T) {
+		t.Parallel()
+		var order []int
+		record := func(n int) func(string) error {
+			return func(string) error { order = append(order, n); return nil }
+		}
+		track := Groove(bang).
+			OnBreak(record(1)).
+			Jam(bang).
+			OnBreak(record(2)).
+			Jam(NilError(func(string) string { panic(errSentinel) }))
+
+		val, panicked := didPanic(func() { _, _ = track.Play("a") })
+		isTrue(t, panicked, "want the stage panic to reach the caller")
+		assertEqual[any](t, errSentinel, val)
+		assertEqual(t, []int{2, 1}, order)
+	})
+
+	// PanicOnError is how a panic realistically reaches a track: its %w
+	// wrapping must survive the rollback intact.
+	t.Run("PanicOnErrorStageRollsBack", func(t *testing.T) {
+		t.Parallel()
+		calls := 0
+		failing := func(string) (string, error) { return "", errSentinel }
+		track := Groove(bang).
+			OnBreak(func(string) error { calls++; return errors.New("discarded") }).
+			Jam(NilError(PanicOnError(failing)))
+
+		val, panicked := didPanic(func() { _, _ = track.Play("a") })
+		isTrue(t, panicked, "want the stage panic to reach the caller")
+		err, ok := val.(error)
+		if !ok {
+			t.Fatalf("panic value must be an error, got %#v", val)
+		}
+		if !errors.Is(err, errSentinel) {
+			t.Errorf("want errors.Is(%v, %v), got false", err, errSentinel)
+		}
+		assertEqual(t, 1, calls)
+	})
+
+	// Preserving the stage's panic outranks reporting a compensation's own,
+	// and containing each panic lets the remaining compensations still run.
+	t.Run("CompensationPanicDoesNotMaskStagePanic", func(t *testing.T) {
+		t.Parallel()
+		var order []int
+		track := Groove(bang).
+			OnBreak(func(string) error {
+				order = append(order, 1)
+				return nil
+			}).
+			Jam(bang).
+			OnBreak(func(string) error {
+				order = append(order, 2)
+				panic(errors.New("compensation panic"))
+			}).
+			Jam(NilError(func(string) string { panic(errSentinel) }))
+
+		val, panicked := didPanic(func() { _, _ = track.Play("a") })
+		isTrue(t, panicked, "want the stage panic to reach the caller")
+		assertEqual[any](t, errSentinel, val)
+		assertEqual(t, []int{2, 1}, order)
+	})
+
+	// A panic escaping Play here, instead of being joined into the returned
+	// error, would fail this subtest outright.
+	t.Run("CompensationPanicJoinedOnErrorPath", func(t *testing.T) {
+		t.Parallel()
+		errCompensation := errors.New("compensation panic")
+		var order []int
+		track := Groove(bang).
+			OnBreak(func(string) error {
+				order = append(order, 1)
+				return nil
+			}).
+			Jam(bang).
+			OnBreak(func(string) error {
+				order = append(order, 2)
+				panic(errCompensation)
+			}).
+			Jam(boom)
+
+		_, err := track.Play("a")
+		mustErr(t, err)
+		assertEqual(t, []int{2, 1}, order)
+		if !errors.Is(err, errCompensation) {
+			t.Errorf("want errors.Is(%v, %v), got false", err, errCompensation)
+		}
+		want := "funq: Groove pipeline failed at stage 3 of 3: boom\n" +
+			"funq: rollback for stage 2 panicked: compensation panic"
+		assertEqual(t, want, err.Error())
+	})
+
+	// A non-error panic value has no identity to preserve, so it is folded
+	// into the message instead.
+	t.Run("NonErrorCompensationPanicJoined", func(t *testing.T) {
+		t.Parallel()
+		track := Groove(bang).
+			OnBreak(func(string) error { panic("plain string") }).
+			Jam(boom)
+
+		_, err := track.Play("a")
+		mustErr(t, err)
+		want := "funq: Groove pipeline failed at stage 2 of 2: boom\n" +
+			"funq: rollback for stage 1 panicked: plain string"
+		assertEqual(t, want, err.Error())
+	})
+
+	// A stage can also leave with no recoverable panic value — runtime.Goexit,
+	// or panic(nil) under GODEBUG=panicnil=1 — and rollback still runs for it.
+	t.Run("AbnormalStageExitRunsCompensations", func(t *testing.T) {
+		t.Parallel()
+		var order []int
+		record := func(n int) func(string) error {
+			return func(string) error { order = append(order, n); return nil }
+		}
+		track := Groove(bang).
+			OnBreak(record(1)).
+			Jam(bang).
+			OnBreak(record(2)).
+			Jam(NilError(func(s string) string { runtime.Goexit(); return s }))
+
+		var wg sync.WaitGroup
+		wg.Go(func() {
+			_, _ = track.Play("a")
+		})
+		wg.Wait()
+
+		assertEqual(t, []int{2, 1}, order)
+	})
+
+	// A Track is a value: OnBreak registrations belong to the Play call that
+	// runs them, not to the Track — branching and replaying must not leak them.
+	t.Run("CompensationsDoNotLeakAcrossPlays", func(t *testing.T) {
+		t.Parallel()
+		var log []string
+		record := func(name string) func(string) error {
+			return func(string) error { log = append(log, name); return nil }
+		}
+
+		base := Groove(bang).OnBreak(record("base"))
+		short := base.Jam(boom)
+		long := base.Jam(bang).OnBreak(record("long")).Jam(boom)
+
+		_, err := short.Play("a")
+		mustErr(t, err)
+		assertEqual(t, []string{"base"}, log)
+
+		log = nil
+		_, err = long.Play("a")
+		mustErr(t, err)
+		assertEqual(t, []string{"long", "base"}, log)
+
+		// Replaying short sees only its own compensation, unaffected by the
+		// one long registered on top of the prefix they share.
+		log = nil
+		_, err = short.Play("a")
+		mustErr(t, err)
+		assertEqual(t, []string{"base"}, log)
+	})
+
+	// Compensations are scoped to the Track that registered them — see
+	// [Track.Play] — so inner and outer never trigger each other's rollback.
+	t.Run("NestedTracksAreIndependent", func(t *testing.T) {
+		t.Parallel()
+		record := func(log *[]string, name string) func(string) error {
+			return func(string) error { *log = append(*log, name); return nil }
+		}
+
+		t.Run("InnerFails", func(t *testing.T) {
+			t.Parallel()
+			var log []string
+			inner := Groove(bang).OnBreak(record(&log, "inner")).Jam(boom)
+			outer := Groove(bang).
+				OnBreak(record(&log, "outer")).
+				Jam(inner.Play).
+				Jam(bang)
+
+			_, err := outer.Play("a")
+			mustErr(t, err)
+			assertEqual(t, []string{"inner", "outer"}, log)
+			want := "funq: Groove pipeline failed at stage 2 of 3: " +
+				"funq: Groove pipeline failed at stage 2 of 2: boom"
+			assertEqual(t, want, err.Error())
+		})
+
+		t.Run("OuterFailsAfterInnerSucceeds", func(t *testing.T) {
+			t.Parallel()
+			var log []string
+			inner := Groove(bang).OnBreak(record(&log, "inner")).Jam(bang)
+			outer := Groove(bang).
+				OnBreak(record(&log, "outer")).
+				Jam(inner.Play).
+				Jam(boom)
+
+			_, err := outer.Play("a")
+			mustErr(t, err)
+			assertEqual(t, []string{"outer"}, log)
+			assertEqual(t, "funq: Groove pipeline failed at stage 3 of 3: boom", err.Error())
+		})
+
+		// Two stacked rollbacks: inner unwinds first, and the panic it lets
+		// through reaches outer as an ordinary panicking stage.
+		t.Run("InnerPanics", func(t *testing.T) {
+			t.Parallel()
+			var log []string
+			inner := Groove(bang).
+				OnBreak(record(&log, "inner")).
+				Jam(NilError(func(string) string { panic(errSentinel) }))
+			outer := Groove(bang).
+				OnBreak(record(&log, "outer")).
+				Jam(inner.Play).
+				Jam(bang)
+
+			val, panicked := didPanic(func() { _, _ = outer.Play("a") })
+			isTrue(t, panicked, "want the inner stage panic to reach the caller")
+			assertEqual[any](t, errSentinel, val)
+			assertEqual(t, []string{"inner", "outer"}, log)
+		})
+	})
 }
 
 // TestChainBranchingFromSharedPrefix pins that extending a Chain returns a
@@ -361,15 +714,11 @@ func TestTrackBranchingFromSharedPrefix(t *testing.T) {
 	long := base.Jam(ok).Jam(ok)
 
 	_, err := short.Play("a")
-	if err == nil {
-		t.Fatalf("want an error, got nil")
-	}
+	mustErr(t, err)
 	assertEqual(t, "funq: Groove pipeline failed at stage 2 of 2: boom", err.Error())
 
 	_, err = long.Play("a")
-	if err == nil {
-		t.Fatalf("want an error, got nil")
-	}
+	mustErr(t, err)
 	assertEqual(t, "funq: Groove pipeline failed at stage 2 of 4: boom", err.Error())
 }
 
@@ -518,10 +867,7 @@ func TestErrOnNone(t *testing.T) {
 		if !errors.Is(err, errSentinel) {
 			t.Errorf("want errors.Is(%v, %v), got false", err, errSentinel)
 		}
-		var ge *grooveError
-		if !errors.As(err, &ge) {
-			t.Fatalf("want errors.As(%v, %T) to succeed, got false", err, ge)
-		}
+		ge := mustGrooveError(t, err)
 		assertEqual(t, 1, ge.stage)
 		assertEqual(t, 2, ge.of)
 	})

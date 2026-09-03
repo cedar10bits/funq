@@ -14,7 +14,8 @@
 //   - [Compose] and [Groove] build function pipelines one stage at a time via
 //     [Chain.Then] and [Track.Jam]. Compose is for plain ([Fp]) steps that
 //     cannot fail. Groove is for error-returning ([Fe]) steps. It
-//     short-circuits on the first error (railway-oriented programming).
+//     short-circuits on the first error (railway-oriented programming), and
+//     [Track.OnBreak] registers a rollback to run when it does.
 //
 // A few operations — [Chunk], [Contains], [Distinct], and [Zip] — are free
 // functions rather than Flow methods because their signatures cannot be

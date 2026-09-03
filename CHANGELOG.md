@@ -7,6 +7,14 @@ This project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.htm
 Until v1.0.0, the API may change between minor versions. Breaking changes are
 called out here.
 
+## [Unreleased]
+
+### Added
+
+- `Track.OnBreak`: registers a per-stage rollback compensation, run LIFO on a
+  later stage's failure or panic. See the README or `Track.Play`'s
+  documentation for the contract.
+
 ## [0.1.0] - 2026-08-23
 
 Initial release. Requires Go 1.27 or later: the fluent, type-changing chains
@@ -31,4 +39,5 @@ below rest on parameterized methods.
 For the complete API, see
 [pkg.go.dev](https://pkg.go.dev/github.com/cedar10bits/funq).
 
+[Unreleased]: https://github.com/cedar10bits/funq/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/cedar10bits/funq/releases/tag/v0.1.0

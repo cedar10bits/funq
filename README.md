@@ -65,8 +65,8 @@ Reach for funq when:
   `Zip` operations, an `Optional` type, or error-aware composition (`Groove`);
 - a lazy source lets a short-circuiting terminal stop early instead of
   materializing the whole sequence;
-- honestly, it just feels good to write — a top-to-bottom chain is nicer to
-  compose and to revisit than nested calls or a scratch slice and a loop.
+- honestly, it just feels good to write — nicer to compose and to revisit
+  than nested calls or a scratch slice and a loop.
 
 It is not all-or-nothing: `Flow.Seq` yields a standard `iter.Seq[T]` and
 `FromSeq` consumes one, so funq chains and standard-library iterators compose in
@@ -137,6 +137,11 @@ programming.
   change type.
 - Non-`func(T) (U, error)` stages come in through an adapter: `NilError` for a
   plain function, `ErrOnNone` for one returning an `Optional`.
+- `OnBreak(compensate)` registers a rollback for what the pipeline holds so
+  far — a transaction to close, say. It adds no stage. It runs only if a
+  later stage fails or panics, most recently registered first, and leaves a
+  stage's panic to reach the caller unchanged. `Play`'s godoc has the rest of
+  the contract.
 - `Compose` / `Then` / `Run` mirror this for steps that cannot fail —
   `Compose(f).Then(g).Run(x)`.
 

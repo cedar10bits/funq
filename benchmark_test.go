@@ -496,6 +496,37 @@ func BenchmarkSortByStrategies(b *testing.B) {
 	}
 }
 
+// BenchmarkTrackPlay measures a three-stage Track carrying no [Track.OnBreak]
+// — the shape most tracks have — and is the guard on Play's fast path: a
+// track that registered no compensation must pay nothing for the rollback
+// machinery. Its figures are therefore expected to stay put as that machinery
+// changes; BenchmarkTrackPlayOnBreak below is where the cost of rollback
+// bookkeeping is allowed to show. Routing this track through the rollback
+// path instead costs a closure allocation per registered [Track.OnBreak]
+// plus the slice that accumulates them.
+//
+// docs/performance.md holds the measured figures. Regenerate them with these
+// benchmarks rather than hand-updating numbers here.
+func BenchmarkTrackPlay(b *testing.B) {
+	track := Groove(NilError(mul2)).Jam(NilError(add1)).Jam(NilError(mul3))
+	for b.Loop() {
+		_, _ = track.Play(42)
+	}
+}
+
+func BenchmarkTrackPlayOnBreak(b *testing.B) {
+	noop := func(int) error { return nil }
+	track := Groove(NilError(mul2)).
+		OnBreak(noop).
+		Jam(NilError(add1)).
+		OnBreak(noop).
+		Jam(NilError(mul3)).
+		OnBreak(noop)
+	for b.Loop() {
+		_, _ = track.Play(42)
+	}
+}
+
 func runAllBenchmarks(n int, b *testing.B) {
 	b.Helper()
 	flatMap := func(f Flow[int]) Flow[int] {

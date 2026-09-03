@@ -295,6 +295,29 @@ func ExampleGroove() {
 	// Output: 42 <nil>
 }
 
+func ExampleTrack_OnBreak() {
+	// One stage opens a resource the later stages need.
+	begin := func(id string) (string, error) { return "tx(" + id + ")", nil }
+	rollback := func(tx string) error {
+		fmt.Println("rolled back", tx)
+		return nil
+	}
+	commit := funq.NilError(func(tx string) string { return tx + " committed" })
+
+	// OnBreak registers the rollback for whatever begin produced. It adds no
+	// stage: the failure below is still stage 2 of 2.
+	charge := func(string) (string, error) { return "", errors.New("card declined") }
+	_, err := funq.Groove(begin).OnBreak(rollback).Jam(charge).Play("42")
+	fmt.Println(err)
+
+	// Nothing to undo when every stage succeeds.
+	fmt.Println(funq.Groove(begin).OnBreak(rollback).Jam(commit).Play("7"))
+	// Output:
+	// rolled back tx(42)
+	// funq: Groove pipeline failed at stage 2 of 2: card declined
+	// tx(7) committed <nil>
+}
+
 func ExampleErrOnNone() {
 	// A lookup reports absence as None, not as an error.
 	users := map[int]string{1: "ada"}

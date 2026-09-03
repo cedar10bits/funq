@@ -27,6 +27,9 @@ sections below cover the characteristics that decide it:
 - when a pipeline re-runs
 - when laziness turns an expensive scan cheap
 
+`Groove` pipelines have one question of their own — what rollback costs —
+covered in the last section.
+
 ## When Flow is cheap and when it isn't
 
 Eager vs lazy is a property of how a Flow is constructed, not a separate type:
@@ -226,6 +229,24 @@ Here laziness turns an O(N) computation into O(1). Reach for Flow when the
 pipeline reads clearly and either the data set is small or a lazy source lets
 you stop early.
 
+## What rollback costs a Groove pipeline
+
+`Track.OnBreak` registers a compensation that `Track.Play` runs if a later
+stage fails. A track that registers none pays nothing for that machinery:
+`Play` takes a fast path that skips the compensation slice and the deferred
+rollback entirely. Three stages over an int, with and without compensations:
+
+| Track                  | Time      | Allocations     |
+| ---------------------- | --------- | --------------- |
+| 3 stages, no `OnBreak` | ~12 ns/op | 0 B, 0 allocs   |
+| 3 stages, 3 `OnBreak`s | ~61 ns/op | 192 B, 5 allocs |
+
+The zero-allocation row is the one to rely on: **a pipeline that registers no
+compensation is unaffected by the rollback machinery's existence**, so there is
+no cost to weigh unless you use `OnBreak`. When you do, what you pay is the
+compensation closures plus the slice holding them — bookkeeping that outlives
+each stage because the rollback may need it after the stage returns.
+
 > Reproduce the figures in this document with one `-bench` pattern per
 > process. Benchmarks sharing a process share its GC pressure and heap
 > growth. This suite has a concrete case of that mattering, written up in
@@ -240,6 +261,7 @@ you stop early.
 > go test -bench '^BenchmarkEarlyExit$' -benchmem -run '^$' .
 > go test -bench 'BenchmarkSortByStrategies/n=(100|10000)$' -benchmem -run '^$' .
 > go test -bench 'BenchmarkSortByStrategies/n=1000000$' -benchmem -benchtime=6x -run '^$' .
+> go test -bench '^BenchmarkTrackPlay' -benchmem -run '^$' .
 > ```
 >
 > The `SortBy` table's n=1,000,000 rows need that `-benchtime=6x`: each
