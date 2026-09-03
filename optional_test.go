@@ -44,8 +44,8 @@ func TestOptionalOrErrRoundTrip(t *testing.T) {
 	if !errors.Is(err, errSentinel) {
 		t.Errorf("want errors.Is(%v, %v), got false", err, errSentinel)
 	}
-	var numErr *strconv.NumError
-	isFalse(t, errors.As(err, &numErr))
+	_, ok := errors.AsType[*strconv.NumError](err)
+	isFalse(t, ok)
 }
 
 func TestZeroValueOptionalIsNone(t *testing.T) {
@@ -209,9 +209,7 @@ func TestOptionalUnmarshalJSON(t *testing.T) {
 
 	// decode error from the inner type propagates
 	var bad Optional[int]
-	if err := json.Unmarshal([]byte(`"nope"`), &bad); err == nil {
-		t.Errorf("want an error, got nil")
-	}
+	mustErr(t, json.Unmarshal([]byte(`"nope"`), &bad))
 }
 
 func TestOptionalJSONRoundTripInStruct(t *testing.T) {

@@ -9,7 +9,7 @@ import (
 )
 
 // Helpers shared across this package's test files. The assertion helpers
-// below stand in for testify: the plain ones for assert, mustNoErr for
+// below stand in for testify: the plain ones for assert, the must ones for
 // require.
 
 // msgSuffix appends the caller's optional note. Taking a string rather than
@@ -58,6 +58,13 @@ func mustNoErr(t *testing.T, err error, msg ...string) {
 	t.Helper()
 	if err != nil {
 		t.Fatalf("unexpected error: %v%s", err, msgSuffix(msg))
+	}
+}
+
+func mustErr(t *testing.T, err error, msg ...string) {
+	t.Helper()
+	if err == nil {
+		t.Fatalf("want an error, got nil%s", msgSuffix(msg))
 	}
 }
 

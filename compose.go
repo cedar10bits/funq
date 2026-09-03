@@ -35,7 +35,7 @@ func NilError[T, U any](f Fp[T, U]) Fe[T, U] {
 // PanicOnError converts an [Fe] to an [Fp], panicking if f returns an error.
 //
 // The panic value is an error wrapping the original err with %w, so a
-// recover call can inspect it with errors.Is/errors.As to reach the
+// recover call can inspect it with errors.Is/errors.AsType to reach the
 // original error.
 func PanicOnError[T, U any](f Fe[T, U]) Fp[T, U] {
 	return func(x T) U {
@@ -186,8 +186,8 @@ func (e *grooveError) Error() string {
 }
 
 // Unwrap exposes the immediate cause, per the standard library's error-chain
-// contract: errors.Is/errors.As call it repeatedly, so unwrapping more than
-// one layer here would hide intermediate grooveError frames from that
+// contract: errors.Is/errors.AsType call it repeatedly, so unwrapping more
+// than one layer here would hide intermediate grooveError frames from that
 // traversal.
 func (e *grooveError) Unwrap() error {
 	return e.err
