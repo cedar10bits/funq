@@ -133,8 +133,9 @@ func TestFlowDocProperties(t *testing.T) {
 
 		// leave the Flow forward-only (property 2)
 		{"FromSeq", propsOf(FromSeq(slices.Values([]int{1, 2, 3}))), forwardOnly},
-		// Forward-only, yet the only construction here that keeps a known count.
+		// Forward-only, yet keeps a known count; Map over it keeps it too.
 		{"Accumulate", propsOf(base.Accumulate(0, add)), flowProps{knownCount: true}},
+		{"MapOfAccumulate", propsOf(base.Accumulate(0, add).Map(mul2)), flowProps{knownCount: true}},
 		{"AccumulateOfUnknown", propsOf(base.Filter(even).Accumulate(0, add)), forwardOnly},
 		{"FlatMap", propsOf(base.FlatMap(func(v int) Flow[int] { return From(v) })), forwardOnly},
 		{"MapIndexed", propsOf(base.MapIndexed(func(i, v int) int { return i + v })), forwardOnly},
@@ -316,10 +317,14 @@ func TestAccumulateSize(t *testing.T) {
 	// Concat must not try to index a sequential Flow of known size.
 	eq(t, []int{0, 1, 3, 7, 8}, From(1, 2).Accumulate(0, add).Concat(From(7, 8)))
 
-	// The result is forward-only, so operations that need a random-access
-	// input to carry a count give it up again; only Reverse (which
-	// materializes) carries it onward.
-	assertEqual(t, sizeUnknown, f.Map(Identity).size)
+	// The result is forward-only. Map is 1:1, so it carries the count onward
+	// and Slice's fast path still applies; Take, Drop and Concat need a
+	// random-access input and give it up again, and only Reverse (which
+	// materializes) recovers it.
+	assertEqual(t, 11, f.Map(Identity).size)
+	assertEqual(t, 11, len(f.Map(mul2).Slice()))
+	eq(t, []int{0, 0, 2}, f.Map(mul2).Take(3))
+	assertEqual(t, 8, f.Map(mul2).Drop(3).Count())
 	assertEqual(t, sizeUnknown, f.Take(3).size)
 	assertEqual(t, sizeUnknown, f.Drop(3).size)
 	assertEqual(t, sizeUnknown, f.Concat(From(1, 2)).size)

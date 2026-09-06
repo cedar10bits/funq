@@ -53,12 +53,11 @@ import (
 //
 //   - Whether its element count is statically known. [From], [FromFn] and
 //     [Optional.AsFlow] establish it and materializing re-establishes it;
-//     [Flow.Map], [Flow.Take], [Flow.Drop], [Flow.TakeWhile], [Flow.DropWhile]
-//     and a [Flow.Concat] of inputs that all have one carry it from a
-//     random-access input, [Flow.Reverse] from any input. [Flow.Accumulate]
-//     derives it (the input's plus one) onto a forward-only Flow, so of those
-//     operations only [Flow.Reverse] carries it onward. [Flow.Filter] gives
-//     it up.
+//     [Flow.Map] and [Flow.Reverse] carry it from any input, while [Flow.Take],
+//     [Flow.Drop], [Flow.TakeWhile], [Flow.DropWhile] and a [Flow.Concat] of
+//     inputs that all have one carry it only from a random-access input.
+//     [Flow.Accumulate] derives it (the input's plus one) onto a forward-only
+//     Flow. [Flow.Filter] gives it up.
 //   - Whether it is still random-access. [FromSeq] builds a forward-only Flow
 //     directly; [Flow.Accumulate] leaves the Flow forward-only while keeping
 //     its count statically known; [Flow.FlatMap], [Flow.MapIndexed],
@@ -101,11 +100,11 @@ type Flow[T any] struct {
 // own size was known.
 //
 // A known size does not imply an indexed Flow, though: Accumulate builds a
-// sequential Flow of known size, because a running accumulator has no random
-// access yet emits exactly one element per input element plus the seed. Two
-// things follow for code reading size: indexing by it ([Flow.Slice]'s fast
-// path) needs the emitted count to stay exact, and walking an indexed source
-// (concatIndexed) must still guard at == nil.
+// sequential Flow of known size (a running accumulator has no random access yet
+// emits exactly one element per input element plus the seed). Map over such a
+// Flow preserves it. Two things follow for code reading size: indexing by it
+// ([Flow.Slice]'s fast path) needs the emitted count to stay exact, and walking
+// an indexed source (concatIndexed) must still guard at == nil.
 const sizeUnknown = -1
 
 // forward and backward are the step directions used to walk an indexed
@@ -297,16 +296,22 @@ func (f Flow[T]) Map[U any](fn func(T) U) Flow[U] {
 		}
 	}
 	if f.seq == nil {
-		return empty[U]()
+		return Flow[U]{size: f.size}
 	}
 	seq := f.seq
-	return fromSeq(func(yield func(U) bool) {
+	mapped := func(yield func(U) bool) {
 		for v := range seq {
 			if !yield(fn(v)) {
 				return
 			}
 		}
-	})
+	}
+	if f.size == sizeUnknown {
+		return fromSeq(mapped)
+	}
+	// Not fromSeq, which would drop the size (see sizeUnknown): Map is 1:1, so
+	// a forward-only input's known count carries onto the result.
+	return Flow[U]{seq: mapped, size: f.size}
 }
 
 // MapIndexed transforms each element with fn, which also receives the
