@@ -6,7 +6,7 @@ response times vary.
 ## Pull requests
 
 - Open an issue first for anything beyond a bug fix or doc change, so the API
-  direction can be agreed before you write code.
+  direction can be agreed.
 - CI must pass: `gofumpt` (formatting), `go vet`, `golangci-lint`, and
   `go test -race ./...`. Run these locally before pushing.
 - Add or update examples (`example_test.go`) and tests for any behaviour

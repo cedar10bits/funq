@@ -17,8 +17,8 @@ called out here.
 
 ## [0.1.0] - 2026-08-23
 
-Initial release. Requires Go 1.27 or later: the fluent, type-changing chains
-below rest on parameterized methods.
+Initial release. Requires Go 1.27 or later: the type-changing chains below
+rest on parameterized methods.
 
 ### Added
 

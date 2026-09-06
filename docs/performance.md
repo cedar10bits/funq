@@ -26,9 +26,7 @@ sections below cover the characteristics that decide it:
 - which operations stay lazy
 - when a pipeline re-runs
 - when laziness turns an expensive scan cheap
-
-`Groove` pipelines have one question of their own — what rollback costs —
-covered in the last section.
+- what rollback costs a `Groove` pipeline
 
 ## When Flow is cheap and when it isn't
 
@@ -79,7 +77,7 @@ Intermediate operations (`Map`, `Filter`, ...) are lazy. Terminal operations
 > `Distinct`, `DistinctBy`, `Zip`, `Chunk`, or `Concat` with unknown-size
 > inputs).
 
-Two of those exceptions are worth knowing the cost of directly:
+Two of those are worth knowing the cost of directly:
 
 - **`Take(n)`** is O(1) and stays lazy whenever the count is statically
   known (see above), including right after a `TakeWhile`/`DropWhile` that
@@ -136,14 +134,11 @@ shapes:
 | 10,000    | ~1.0x             | ~1.6x               | ~4.7x                 |
 | 1,000,000 | ~1.0x             | ~1.7x               | ~4.2x                 |
 
-(comparator/permutation time ratio; >1x means permutation is faster). The
-identity/int column drops to a ~1.0x draw by n=10,000 and holds there. The
-other two shapes stay in the same elevated range (~1.6-1.8x for field,
-~4.2-4.8x for tolower) at every n measured — permutation's edge there doesn't
-depend on scale, only on key cost and element size. Permutation's memory cost
-for identity/int holds close to that ~2.5x across n too (~2.3x at n=100,
-~2.5x at n=10,000): the three extra slices — keys, index permutation, and
-the output — scale with n like everything else.
+(comparator/permutation time ratio; >1x means permutation is faster). Only
+identity/int converges to a draw, by n=10,000; the other two shapes' edge
+doesn't depend on scale, only on key cost and element size. Permutation's
+memory cost for identity/int holds close to that ~2.5x across n too (~2.3x at
+n=100, ~2.5x at n=10,000).
 
 See `Flow.Take` and `Flow.SortBy` in `flow.go` for why each implementation
 was chosen over the alternative it replaced.
@@ -165,9 +160,8 @@ was chosen over the alternative it replaced.
 > A Flow is also not safe for concurrent use for the same reason; see the
 > `Flow` doc comment.
 >
-> **When to reach for `Cache()`:** call it if either situation above applies.
-> If not (a single terminal call over a pure chain built from `From`/`FromFn`),
-> `Cache()` buys nothing and just adds an allocation.
+> **When not to:** a single terminal call over a pure chain built from
+> `From`/`FromFn` — `Cache()` buys nothing and just adds an allocation.
 
 ## Throughput vs a hand-written loop
 
@@ -209,9 +203,8 @@ an identity map rather than the doubling measured above) over 1,000 ints:
 | 10 iterations    | ~24.4 µs/op | ~16.6 µs/op | ~1.5x     |
 | 100 iterations   | ~357 µs/op  | ~351 µs/op  | ~1.0x     |
 
-The fixed ~7 ns/element overhead doesn't grow with the workload — the same
-closures and `iter.Seq` machinery run either way — so for a pipeline doing
-non-trivial work per element, Flow's overhead disappears into noise.
+The overhead is fixed — the same closures and `iter.Seq` machinery run either
+way — so real per-element work drowns it out.
 
 Where Flow *does* pay off is **early exit on a lazy source**: a
 short-circuiting terminal (`First`, `Find`, `Any`) — or `Take`, which stops

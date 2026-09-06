@@ -3,8 +3,8 @@
 ## Reporting a vulnerability
 
 Report suspected vulnerabilities through GitHub's private vulnerability
-reporting: open the **Security** tab of this repository and choose
-**Report a vulnerability**. This keeps the report private until a fix is ready.
+reporting: open the **Security** tab and choose **Report a vulnerability**.
+This keeps the report private until a fix is ready.
 
 Please do not open a public issue for security reports.
 
@@ -17,5 +17,4 @@ in a sequence operation). Reports of such bugs are still welcome.
 
 ## Supported versions
 
-Only the latest `0.x` minor version receives fixes while the API is
-pre-1.0.
+Only the latest `0.x` minor version receives fixes.

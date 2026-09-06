@@ -12,7 +12,7 @@ Type-safe, composable utilities for functional programming in Go.
 funq provides type-safe functional programming utilities built on generics:
 fluent, value-typed sequences, null-safe value handling, and composition of
 fallible functions (`Groove`). The standard library's `iter`, `slices`, and
-`maps` do not address that last one at all.
+`maps` do not address that last one.
 
 `Flow[T]` and `Optional[T]` are concrete value types, so their `Map`/`FlatMap`
 methods (and `Flow.Fold`) can each carry a type parameter — a chain changes
@@ -45,7 +45,7 @@ _, err := checkout.Play(userID)
 go get github.com/cedar10bits/funq
 ```
 
-Requires Go 1.27 or later; there is no build for earlier versions.
+Requires Go 1.27 or later.
 
 ## When to reach for funq (vs the standard library)
 
@@ -65,8 +65,9 @@ Reach for funq when:
   `Zip` operations, an `Optional` type, or error-aware composition (`Groove`);
 - a lazy source lets a short-circuiting terminal stop early instead of
   materializing the whole sequence;
-- honestly, it just feels good to write — nicer to compose and to revisit
-  than nested calls or a scratch slice and a loop.
+- you just enjoy writing it this way — composing a chain of small
+  transformations into a single functional expression, not driving a loop that
+  mutates as it goes.
 
 It is not all-or-nothing: `Flow.Seq` yields a standard `iter.Seq[T]` and
 `FromSeq` consumes one, so funq chains and standard-library iterators compose in
@@ -84,24 +85,14 @@ https://pkg.go.dev/github.com/cedar10bits/funq#pkg-examples
 ### Flow - Slice Operations
 
 ```go
-package main
+result := funq.FromFn(10, func(i int) int { return i + 1 }).
+	Filter(func(v int) bool { return v%2 == 0 }). // Keep even: [2, 4, 6, 8, 10]
+	Map(func(v int) int { return v * 3 }).        // Multiply by 3: [6, 12, 18, 24, 30]
+	Drop(1).                                      // Drop first: [12, 18, 24, 30]
+	Take(3).                                      // Take first 3: [12, 18, 24]
+	Slice()
 
-import (
-	"fmt"
-
-	"github.com/cedar10bits/funq"
-)
-
-func main() {
-	result := funq.FromFn(10, func(i int) int { return i + 1 }).
-		Filter(func(v int) bool { return v%2 == 0 }). // Keep even numbers: [2, 4, 6, 8, 10]
-		Map(func(v int) int { return v * 3 }). // Multiply by 3: [6, 12, 18, 24, 30]
-		Drop(1).                        // Drop first: [12, 18, 24, 30]
-		Take(3).                        // Take first 3: [12, 18, 24]
-		Slice()
-
-	fmt.Println(result) // Output: [12 18 24]
-}
+fmt.Println(result) // Output: [12 18 24]
 ```
 
 ### Optional - Null-Safe Values
@@ -130,8 +121,7 @@ serialized in passing, not a persisted struct field; the type docs cover why
 
 ### Groove - Error-Aware Composition (Railway-Oriented)
 
-The funk in `funq`: the first error short-circuits the rest — railway-oriented
-programming.
+The funk in `funq`: the first error short-circuits the rest.
 
 - Build it with `Groove(first).Jam(next)...` — one `Jam` per stage; stages may
   change type.
@@ -145,8 +135,8 @@ programming.
 - `Compose` / `Then` / `Run` mirror this for steps that cannot fail —
   `Compose(f).Then(g).Run(x)`.
 
-`Play` runs the pipeline. On failure, the returned error names the failing
-stage's position and the pipeline's length:
+`Play` runs the pipeline. On failure, the error names the failing stage and
+the pipeline's length:
 
 ```
 funq: Groove pipeline failed at stage 3 of 5: <underlying error>
