@@ -118,6 +118,16 @@ const (
 	backward = -1
 )
 
+// span is the width of the physical index range between a and b, regardless of
+// which is larger. For a hole-free indexed range (see indexedExact) that width
+// is the live element count.
+func span(a, b int) int {
+	if a < b {
+		return b - a
+	}
+	return a - b
+}
+
 // From creates an eager Flow backed directly by the given elements, without
 // copying. It returns an empty Flow when no elements are provided.
 //
@@ -549,11 +559,7 @@ func (f Flow[T]) Take(n int) Flow[T] {
 	// The physical range width is an exact upper bound on the live element
 	// count (as in Slice), so it caps the preallocation when n is far larger
 	// than the Flow, e.g. Take(math.MaxInt).
-	width := f.tail - f.head
-	if width < 0 {
-		width = -width
-	}
-	out := make([]T, 0, min(n, width))
+	out := make([]T, 0, min(n, span(f.head, f.tail)))
 	next := f.pull()
 	for len(out) < n {
 		_, v, ok := next()
@@ -600,10 +606,7 @@ func (f Flow[T]) DropWhile(pred func(T) bool) Flow[T] {
 	}
 	size := sizeUnknown
 	if f.indexedExact() {
-		size = f.tail - boundary
-		if size < 0 {
-			size = -size
-		}
+		size = span(boundary, f.tail)
 	}
 	return Flow[T]{at: f.at, head: boundary, tail: f.tail, size: size}
 }
@@ -641,10 +644,7 @@ func (f Flow[T]) TakeWhile(pred func(T) bool) Flow[T] {
 	}
 	size := sizeUnknown
 	if f.indexedExact() {
-		size = boundary - f.head
-		if size < 0 {
-			size = -size
-		}
+		size = span(f.head, boundary)
 	}
 	return Flow[T]{at: f.at, head: f.head, tail: boundary, size: size}
 }
@@ -876,10 +876,7 @@ func (f Flow[T]) Slice() []T {
 	// filter drops many elements. A sequential Flow offers no such bound.
 	capHint := 0
 	if f.at != nil {
-		capHint = f.tail - f.head
-		if capHint < 0 {
-			capHint = -capHint
-		}
+		capHint = span(f.head, f.tail)
 	}
 	out := make([]T, 0, capHint)
 	for v := range f.Seq() {
