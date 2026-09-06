@@ -93,19 +93,23 @@ type Flow[T any] struct {
 // after Filter (which may drop elements) or for a sequential Flow built by
 // fromSeq.
 //
-// Invariant: an indexed Flow with a known size is hole-free, i.e. at(i)
-// reports ok for every i in [head, tail). Take/Drop rely on this to adjust
-// bounds in O(1); TakeWhile/DropWhile rely on it to recover the surviving
-// count from the physical width of the boundary each finds, once the input's
-// own size was known.
-//
-// A known size does not imply an indexed Flow, though: Accumulate builds a
-// sequential Flow of known size (a running accumulator has no random access yet
-// emits exactly one element per input element plus the seed). Map over such a
-// Flow preserves it. Two things follow for code reading size: indexing by it
-// ([Flow.Slice]'s fast path) needs the emitted count to stay exact, and walking
-// an indexed source (concatIndexed) must still guard at == nil.
+// A known size does not imply an indexed Flow: Accumulate builds a sequential
+// Flow of known size (a running accumulator has no random access yet emits
+// exactly one element per input element plus the seed), and Map over such a
+// Flow preserves it. Code indexing by size ([Flow.Slice]'s fast path) needs
+// the emitted count exact; code walking an indexed source (concatIndexed) must
+// still guard at == nil.
 const sizeUnknown = -1
+
+// indexedExact reports whether f is random-access over a hole-free physical
+// range: at != nil, and at(i) reports ok for every i in [head, tail). It is
+// the precondition for O(1) head/tail/size arithmetic — Take and Drop shift
+// bounds, TakeWhile and DropWhile recover the surviving count from a scanned
+// boundary's width — and for concatIndexed's offset dispatch. Filter's holey
+// result and Accumulate's forward-only known-count Flow each meet only half.
+func (f Flow[T]) indexedExact() bool {
+	return f.at != nil && f.size != sizeUnknown
+}
 
 // forward and backward are the step directions used to walk an indexed
 // Flow's physical index: head <= tail is forward, else backward.
@@ -478,7 +482,7 @@ func (f Flow[T]) Drop(n int) Flow[T] {
 			}
 		})
 	}
-	if f.size != sizeUnknown {
+	if f.indexedExact() {
 		if n >= f.size {
 			return empty[T]()
 		}
@@ -528,7 +532,7 @@ func (f Flow[T]) Take(n int) Flow[T] {
 			}
 		})
 	}
-	if f.size != sizeUnknown {
+	if f.indexedExact() {
 		if n >= f.size {
 			return f
 		}
@@ -595,7 +599,7 @@ func (f Flow[T]) DropWhile(pred func(T) bool) Flow[T] {
 		return empty[T]()
 	}
 	size := sizeUnknown
-	if f.size != sizeUnknown {
+	if f.indexedExact() {
 		size = f.tail - boundary
 		if size < 0 {
 			size = -size
@@ -636,7 +640,7 @@ func (f Flow[T]) TakeWhile(pred func(T) bool) Flow[T] {
 		return f
 	}
 	size := sizeUnknown
-	if f.size != sizeUnknown {
+	if f.indexedExact() {
 		size = boundary - f.head
 		if size < 0 {
 			size = -size
@@ -760,15 +764,11 @@ func concatIndexed[T any](all []Flow[T]) (Flow[T], bool) {
 	segs := make([]segment, 0, len(all))
 	total := 0
 	for _, fl := range all {
-		if fl.size == sizeUnknown {
-			return Flow[T]{}, false
-		}
 		if fl.size == 0 {
 			continue
 		}
-		if fl.at == nil {
-			// A known size need not be indexed (see sizeUnknown); the
-			// size == 0 skip above must stay ahead of this so the zero Flow
+		if !fl.indexedExact() {
+			// The size == 0 skip above must stay ahead of this so a zero Flow
 			// does not force the whole Concat onto the forward-only path.
 			return Flow[T]{}, false
 		}
