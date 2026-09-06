@@ -11,6 +11,9 @@ called out here.
 
 ### Added
 
+- `Flow.Accumulate`: the running counterpart of `Fold`, yielding the seed and
+  every intermediate accumulator state (Haskell's `scanl`, Kotlin's
+  `runningFold`). Lazy, and one element longer than its input.
 - `Track.OnBreak`: registers a per-stage rollback compensation, run LIFO on a
   later stage's failure or panic. See the README or `Track.Play`'s
   documentation for the contract.

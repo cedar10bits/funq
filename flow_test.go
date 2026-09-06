@@ -133,6 +133,9 @@ func TestFlowDocProperties(t *testing.T) {
 
 		// leave the Flow forward-only (property 2)
 		{"FromSeq", propsOf(FromSeq(slices.Values([]int{1, 2, 3}))), forwardOnly},
+		// Forward-only, yet the only construction here that keeps a known count.
+		{"Accumulate", propsOf(base.Accumulate(0, add)), flowProps{knownCount: true}},
+		{"AccumulateOfUnknown", propsOf(base.Filter(even).Accumulate(0, add)), forwardOnly},
 		{"FlatMap", propsOf(base.FlatMap(func(v int) Flow[int] { return From(v) })), forwardOnly},
 		{"MapIndexed", propsOf(base.MapIndexed(func(i, v int) int { return i + v })), forwardOnly},
 		{"DistinctBy", propsOf(base.DistinctBy(Identity)), forwardOnly},
@@ -247,6 +250,84 @@ func TestFold(t *testing.T) {
 	got := From(1, 2, 3).Fold("", func(acc string, n int) string { return acc + strconv.Itoa(n) })
 	assertEqual(t, "123", got)
 	assertEqual(t, 0, From[int]().Fold(0, add))
+}
+
+func TestAccumulate(t *testing.T) {
+	t.Parallel()
+	var zero Flow[int]
+	eq(t, []int{7}, zero.Accumulate(7, add))
+	eq(t, []int{0}, From[int]().Accumulate(0, add))
+	eq(t, []int{0, 5}, From(5).Accumulate(0, add))
+	eq(t, []int{0, 1, 3, 6, 10}, From(1, 2, 3, 4).Accumulate(0, add))
+	eq(t, []int{0, 1, 3, 6, 10}, From(1, 2, 3, 4).asSeq().Accumulate(0, add))
+	eq(t, []int{0, 0, 2}, FromFn(10, Identity).Filter(even).Take(2).Accumulate(0, add))
+
+	// The accumulator may change type, as Fold's may.
+	eq(t, []string{"", "1", "12", "123"},
+		From(1, 2, 3).Accumulate("", func(acc string, n int) string { return acc + strconv.Itoa(n) }))
+	eq(t, [][]int{{}, {1}, {1, 2}},
+		From(1, 2).Accumulate([]int{}, func(acc []int, n int) []int { return append(slices.Clone(acc), n) }))
+
+	// The last state is exactly what Fold returns.
+	f := FromFn(10, Identity)
+	assertEqual(t, Some(f.Fold(0, add)), f.Accumulate(0, add).Last())
+}
+
+// TestAccumulateReverse covers both orders: Reverse before Accumulate feeds
+// the accumulator in reversed order, while Reverse after it materializes the
+// forward-only result (see [Flow.Reverse]) and flips the states themselves.
+func TestAccumulateReverse(t *testing.T) {
+	t.Parallel()
+	eq(t, []int{0, 4, 7, 9, 10}, From(1, 2, 3, 4).Reverse().Accumulate(0, add))
+	eq(t, []int{10, 6, 3, 1, 0}, From(1, 2, 3, 4).Accumulate(0, add).Reverse())
+}
+
+// TestAccumulateStaysLazy is TestTakeShortCircuitsLazySource's counterpart for
+// the running accumulator: a short-circuiting terminal must stop the scan
+// where it is rather than fold the whole source.
+func TestAccumulateStaysLazy(t *testing.T) {
+	t.Parallel()
+	const n = 1_000_000
+	calls := 0
+	src := FromFn(n, func(i int) int { calls++; return i })
+
+	assertEqual(t, []int{0, 0, 1, 3}, src.Accumulate(0, add).Take(4).Slice())
+	assertEqual(t, 3, calls, "Take(4) must fold only the 3 elements the last state needs")
+
+	calls = 0
+	assertEqual(t, Some(0), src.Accumulate(0, add).First())
+	assertEqual(t, 0, calls, "First must not touch the source: init precedes every element")
+}
+
+// TestAccumulateSize pins the state Accumulate introduces: a forward-only Flow
+// that still knows its count (see sizeUnknown).
+func TestAccumulateSize(t *testing.T) {
+	t.Parallel()
+	calls := 0
+	f := FromFn(10, func(i int) int { calls++; return i }).Accumulate(0, add)
+	assertEqual(t, 11, f.Count(), "the count is the input's plus one")
+	isFalse(t, f.IsEmpty())
+	assertEqual(t, 0, calls, "a known count answers without traversing")
+
+	// Slice's known-size fast path fills by index, so the scan must emit
+	// exactly size elements.
+	assertEqual(t, 11, len(f.Slice()))
+
+	// Concat must not try to index a sequential Flow of known size.
+	eq(t, []int{0, 1, 3, 7, 8}, From(1, 2).Accumulate(0, add).Concat(From(7, 8)))
+
+	// The result is forward-only, so operations that need a random-access
+	// input to carry a count give it up again; only Reverse (which
+	// materializes) carries it onward.
+	assertEqual(t, sizeUnknown, f.Map(Identity).size)
+	assertEqual(t, sizeUnknown, f.Take(3).size)
+	assertEqual(t, sizeUnknown, f.Drop(3).size)
+	assertEqual(t, sizeUnknown, f.Concat(From(1, 2)).size)
+	assertEqual(t, 11, f.Reverse().Count())
+
+	g := FromFn(10, Identity).Filter(even).Accumulate(0, add)
+	assertEqual(t, sizeUnknown, g.size, "an unknown input count stays unknown")
+	assertEqual(t, 6, g.Count())
 }
 
 func TestTo(t *testing.T) {

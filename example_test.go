@@ -392,6 +392,17 @@ func ExampleFlow_Map() {
 	// Output: [2 4 6 8 10]
 }
 
+func ExampleFlow_Accumulate() {
+	// Running totals: the seed comes first, so the result is one element
+	// longer than the input.
+	balances := funq.From(120, -40, 75, -10).
+		Accumulate(0, func(balance, tx int) int { return balance + tx }).
+		Slice()
+
+	fmt.Println(balances)
+	// Output: [0 120 80 155 145]
+}
+
 func ExampleFlow_Reduce() {
 	sum := funq.From(1, 2, 3, 4, 5).Reduce(func(a, b int) int { return a + b }).MustGet()
 

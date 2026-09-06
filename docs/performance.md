@@ -73,9 +73,9 @@ Intermediate operations (`Map`, `Filter`, ...) are lazy. Terminal operations
 > `Flow.TakeWhile`'s doc comment).
 >
 > `Reverse` is O(1) on random-access Flows, but materializes forward-only
-> Flows (built directly by `FromSeq`, or produced by `FlatMap`, `MapIndexed`,
-> `Distinct`, `DistinctBy`, `Zip`, `Chunk`, or `Concat` with unknown-size
-> inputs).
+> Flows (built directly by `FromSeq`, or produced by `Accumulate`, `FlatMap`,
+> `MapIndexed`, `Distinct`, `DistinctBy`, `Zip`, `Chunk`, or `Concat` with
+> unknown-size inputs).
 
 Two of those are worth knowing the cost of directly:
 

@@ -79,7 +79,8 @@ funq has three: `Flow` for sequences, `Optional` for a value that may be absent,
 and the `Groove` / `Compose` builders for function pipelines.
 
 pkg.go.dev has runnable, compiler-verified examples for more operations than
-shown below, including `SortBy`, `GroupBy`, `Zip`, `Partition`, and `Chunk`:
+shown below, including `SortBy`, `GroupBy`, `Zip`, `Partition`, `Chunk`, and
+`Accumulate`:
 https://pkg.go.dev/github.com/cedar10bits/funq#pkg-examples
 
 ### Flow - Slice Operations

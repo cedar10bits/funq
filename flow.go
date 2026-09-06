@@ -53,11 +53,15 @@ import (
 //
 //   - Whether its element count is statically known. [From], [FromFn] and
 //     [Optional.AsFlow] establish it and materializing re-establishes it;
-//     [Flow.Map], [Flow.Take], [Flow.Drop], [Flow.TakeWhile], [Flow.DropWhile],
-//     [Flow.Reverse] and a [Flow.Concat] of inputs that all have one carry it;
-//     [Flow.Filter] gives it up.
+//     [Flow.Map], [Flow.Take], [Flow.Drop], [Flow.TakeWhile], [Flow.DropWhile]
+//     and a [Flow.Concat] of inputs that all have one carry it from a
+//     random-access input, [Flow.Reverse] from any input. [Flow.Accumulate]
+//     derives it (the input's plus one) onto a forward-only Flow, so of those
+//     operations only [Flow.Reverse] carries it onward. [Flow.Filter] gives
+//     it up.
 //   - Whether it is still random-access. [FromSeq] builds a forward-only Flow
-//     directly; [Flow.FlatMap], [Flow.MapIndexed],
+//     directly; [Flow.Accumulate] leaves the Flow forward-only while keeping
+//     its count statically known; [Flow.FlatMap], [Flow.MapIndexed],
 //     [Flow.DistinctBy], [Distinct], [Zip], [Chunk] and a [Flow.Concat] whose
 //     inputs do not all have a known count leave the Flow forward-only
 //     instead, with no statically known count either, until it is
@@ -87,13 +91,21 @@ type Flow[T any] struct {
 }
 
 // sizeUnknown marks a Flow whose element count is not statically known, e.g.
-// after Filter (which may drop elements) or for any sequential Flow.
+// after Filter (which may drop elements) or for a sequential Flow built by
+// fromSeq.
 //
-// Invariant: a Flow with a known size is hole-free, i.e. at(i) reports ok for
-// every i in [head, tail). Take/Drop rely on this to adjust bounds in O(1);
-// TakeWhile/DropWhile rely on it to recover the surviving count from the
-// physical width of the boundary each finds, once the input's own size was
-// known.
+// Invariant: an indexed Flow with a known size is hole-free, i.e. at(i)
+// reports ok for every i in [head, tail). Take/Drop rely on this to adjust
+// bounds in O(1); TakeWhile/DropWhile rely on it to recover the surviving
+// count from the physical width of the boundary each finds, once the input's
+// own size was known.
+//
+// A known size does not imply an indexed Flow, though: Accumulate builds a
+// sequential Flow of known size, because a running accumulator has no random
+// access yet emits exactly one element per input element plus the seed. Two
+// things follow for code reading size: indexing by it ([Flow.Slice]'s fast
+// path) needs the emitted count to stay exact, and walking an indexed source
+// (concatIndexed) must still guard at == nil.
 const sizeUnknown = -1
 
 // forward and backward are the step directions used to walk an indexed
@@ -328,6 +340,38 @@ func (f Flow[T]) FlatMap[U any](fn func(T) Flow[U]) Flow[U] {
 			}
 		}
 	})
+}
+
+// Accumulate returns the running states of a fold: init first, then the
+// accumulator after each element in turn. From(1, 2, 3, 4) with init 0 and
+// addition yields [0 1 3 6 10]. The result is always one element more than the
+// input, since init is emitted whether or not any element follows. It is the
+// running counterpart of [Flow.Fold], which keeps only the final state, and
+// matches Haskell's scanl and Kotlin's runningFold.
+//
+// Accumulate is lazy, so a short-circuiting terminal operation stops the
+// accumulation where it is. The result is always forward-only (see [Flow]): a
+// running accumulator cannot be evaluated at an arbitrary index. Its element
+// count survives regardless, being the input's plus one.
+func (f Flow[T]) Accumulate[U any](init U, fn func(U, T) U) Flow[U] {
+	src := f
+	scan := func(yield func(U) bool) {
+		acc := init
+		if !yield(acc) {
+			return
+		}
+		for v := range src.Seq() {
+			acc = fn(acc, v)
+			if !yield(acc) {
+				return
+			}
+		}
+	}
+	if f.size == sizeUnknown {
+		return fromSeq(scan)
+	}
+	// Not fromSeq, which would drop the size (see sizeUnknown).
+	return Flow[U]{seq: scan, size: f.size + 1}
 }
 
 // Filter keeps only the elements that satisfy pred.
@@ -662,9 +706,11 @@ func (f Flow[T]) SortBy[K cmp.Ordered](key func(T) K) Flow[T] {
 // Concat returns a Flow that yields the elements of f followed by the
 // elements of each of others, in order.
 //
-// Concat evaluates nothing at construction time. When every input's element
-// count is statically known (see [Flow] — a Flow left empty by [Flow.Filter]
-// does not qualify), the result's is too, preserving O(1) [Flow.Reverse] and
+// Concat evaluates nothing at construction time. When every input is
+// random-access with a statically known element count (see [Flow] — a Flow
+// left empty by [Flow.Filter] does not qualify, nor a non-empty forward-only
+// one such as [Flow.Accumulate]'s result), the result's count is known too,
+// preserving O(1) [Flow.Reverse] and
 // constant-time [Flow.Take] and [Flow.Drop]; otherwise the result is
 // forward-only.
 //
@@ -714,6 +760,12 @@ func concatIndexed[T any](all []Flow[T]) (Flow[T], bool) {
 		}
 		if fl.size == 0 {
 			continue
+		}
+		if fl.at == nil {
+			// A known size need not be indexed (see sizeUnknown); the
+			// size == 0 skip above must stay ahead of this so the zero Flow
+			// does not force the whole Concat onto the forward-only path.
+			return Flow[T]{}, false
 		}
 		base, dir := fl.head, forward
 		if fl.head > fl.tail {
@@ -802,8 +854,9 @@ func (f Flow[T]) Reduce(fn func(T, T) T) Optional[T] {
 // Slice materializes the Flow into a new slice.
 func (f Flow[T]) Slice() []T {
 	if f.size != sizeUnknown {
-		// A known size is exact (hole-free invariant), so fill by index and
-		// skip append's bounds checks.
+		// A known size is exact (the hole-free invariant, or Accumulate's
+		// one-per-element construction), so fill by index and skip append's
+		// bounds checks.
 		out := make([]T, f.size)
 		i := 0
 		for v := range f.Seq() {
