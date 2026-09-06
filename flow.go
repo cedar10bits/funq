@@ -8,16 +8,16 @@ import (
 
 // Flow is an immutable, type-safe sequence of values.
 //
-// A Flow is a concrete value type (not an interface), which lets its
+// A Flow is a concrete value type, which lets its
 // transformation methods carry their own type parameter and therefore change
 // the element type while keeping the chain fluent (see [Flow.Map],
 // [Flow.FlatMap], [Flow.Fold]). Whether a Flow is eager or lazy is a property
 // of its source: From wraps concrete data, FromFn computes on demand. That
 // describes how elements are produced, not how many times a pipeline built
-// on either one runs — see below.
+// on either one runs.
 //
 // Intermediate operations build a pipeline; terminal operations run it. A
-// terminal operation ends the chain: it returns something other than a Flow
+// terminal operation returns something other than a Flow
 // ([Flow.Slice], [Flow.Count], [Flow.Reduce], ...), or, in [Flow.Partition]'s
 // case, two Flows that are already evaluated. [Flow.Seq] and [Flow.To] are
 // not terminal — Seq hands back an iterator that runs the pipeline when
@@ -30,10 +30,10 @@ import (
 //
 //  1. Keep the functions passed to Map/Filter/... pure: this package does not
 //     guarantee when, how many times, or in what order they are invoked. An
-//     impure one makes that schedule observable — a predicate that logs,
-//     counts, or warms a cache fires once per element on every terminal
-//     operation that traverses, and again whenever an intermediate operation
-//     evaluates part of the pipeline early.
+//     impure one makes that schedule observable — a predicate that logs
+//     fires once per element on every terminal operation that traverses, and
+//     again whenever an intermediate operation evaluates part of the pipeline
+//     early.
 //  2. To traverse an expensive pipeline more than once, materialize it with
 //     [Flow.Cache] so it runs exactly once.
 //
@@ -64,9 +64,8 @@ import (
 //     materialized again. [Flow.Reverse] materializes such a Flow, and
 //     [Flow.Count], [Flow.IsEmpty] and [Flow.Last] have to traverse it.
 //
-// A step that can fail belongs in [Groove], not in a Flow: Map/Filter/...
-// take [Fp], not [Fe]. Convert it to [Fp] first (e.g. with [IgnoreError] or
-// [PanicOnError]).
+// A step that can fail belongs in [Groove]: Map/Filter/... take [Fp], not
+// [Fe]. Convert it to [Fp] first (e.g. with [IgnoreError] or [PanicOnError]).
 //
 // The zero value is a valid empty Flow.
 //
@@ -80,7 +79,7 @@ import (
 // Confine a Flow to a single goroutine, or materialize it with [Flow.Cache]
 // and share the resulting slice instead.
 type Flow[T any] struct {
-	at   func(int) (T, bool) // indexed access; nil means use seq
+	at   func(int) (T, bool) // indexed access
 	seq  iter.Seq[T]         // sequential source; used when at == nil
 	head int                 // first index (forward) or one-past-first (reverse)
 	tail int                 // boundary index; head <= tail is forward, else reverse
@@ -128,7 +127,7 @@ func fromSlice[T any](s []T) Flow[T] {
 }
 
 // FromFn creates a lazy Flow of n elements, generating element i with fn(i).
-// Elements are produced on demand. n <= 0 yields an empty Flow.
+// n <= 0 yields an empty Flow.
 func FromFn[T any](n int, fn func(int) T) Flow[T] {
 	n = max(n, 0)
 	return Flow[T]{
@@ -140,9 +139,8 @@ func FromFn[T any](n int, fn func(int) T) Flow[T] {
 }
 
 // FromSeq creates a lazy Flow over the elements of seq: the way into funq from
-// the standard library's iterator vocabulary, and the mirror image of
-// [Flow.Seq]'s outbound direction. The result is forward-only with no
-// statically known element count (see the [Flow] documentation's second
+// the standard library's iterator vocabulary. The result is forward-only with
+// no statically known element count (see the [Flow] documentation's second
 // bullet). FromSeq(nil) is the exception, returning the empty Flow, whose
 // count is statically known to be zero.
 //
@@ -228,9 +226,6 @@ func (f Flow[T]) pull() func() (int, T, bool) {
 // fn with the logical index (0-based, skipping holes) and value. fn returns
 // false to stop. It returns the physical boundary suitable for narrowing the
 // Flow's bounds, and whether iteration completed without stopping.
-//
-// each delegates index-walking to pull and adds logical-index counting plus
-// direction-aware translation of pull's physical index into that boundary.
 //
 // each must only be called when f.at != nil.
 func (f Flow[T]) each(fn func(idx int, v T) bool) (boundary int, completed bool) {
@@ -342,23 +337,19 @@ func (f Flow[T]) FlatMap[U any](fn func(T) Flow[U]) Flow[U] {
 // and the result is traversed more than once. Giving up the statically known
 // count is also what makes a later [Flow.Drop] or [Flow.Take] scan eagerly.
 //
-// Chaining several Filter calls nests one closure per call around f.at,
-// which measured roughly on par with dropping to the sequential
-// representation at a chain depth of two, and clearly slower by a depth of
-// four (BenchmarkFilterRepresentation) — combine the predicates with [And]
-// into a single Filter call instead; that matches or beats the sequential
-// chain's throughput at those depths while keeping the indexed representation
-// (see the note below).
+// Combine the predicates with [And] into a single Filter call rather than
+// chaining several Filter calls, which nests one closure per call around
+// f.at and measures on par with the sequential representation at chain depth
+// two, clearly slower by depth four (BenchmarkFilterRepresentation). The
+// single [And] call matches or beats the sequential chain's throughput at
+// those depths while keeping the indexed representation (see the note below).
 func (f Flow[T]) Filter(pred func(T) bool) Flow[T] {
 	// Keeping the indexed representation (holes, see sizeUnknown) beats the
 	// sequential representation for a single Filter call; the doc comment
-	// above measures how that flips as calls chain
-	// (BenchmarkFilterRepresentation). Each chained call nests another closure
-	// inside f.at, while the sequential chain's nested range-over-func
-	// generators scale better as the chain grows. This branch is kept
-	// anyway, even at the depths where it loses, because indexed carries more
-	// than raw Filter throughput: it is what lets [Flow.Reverse] stay O(1)
-	// instead of materializing, and lets
+	// above shows that advantage reversing as Filter calls chain. This branch
+	// is kept anyway, even where it loses, because indexed carries more than
+	// raw Filter throughput: it is what lets [Flow.Reverse] stay O(1) instead
+	// of materializing, and lets
 	// [Flow.Drop]/[Flow.Take]/[Flow.DropWhile]/[Flow.TakeWhile] narrow
 	// head/tail instead of rebuilding the pipeline.
 	if f.at != nil {
@@ -466,8 +457,7 @@ func (f Flow[T]) Drop(n int) Flow[T] {
 // the upstream predicate or generator runs once per scanned element in total.
 // That scan reaches no further than the n-th surviving element, so a
 // short-circuiting Take over a large lazy source stays cheap; it runs to the
-// end only when fewer than n survive, since that is the only way to establish
-// there are no more.
+// end only when fewer than n survive.
 func (f Flow[T]) Take(n int) Flow[T] {
 	if n <= 0 {
 		return empty[T]()
@@ -557,9 +547,6 @@ func (f Flow[T]) DropWhile(pred func(T) bool) Flow[T] {
 	}
 	size := sizeUnknown
 	if f.size != sizeUnknown {
-		// The surviving range is [boundary, f.tail): hole-free, since a known
-		// size implies as much (sizeUnknown's doc comment), so its width is the
-		// exact count.
 		size = f.tail - boundary
 		if size < 0 {
 			size = -size
@@ -601,9 +588,6 @@ func (f Flow[T]) TakeWhile(pred func(T) bool) Flow[T] {
 	}
 	size := sizeUnknown
 	if f.size != sizeUnknown {
-		// The surviving range is [f.head, boundary): hole-free, since a known
-		// size implies as much (sizeUnknown's doc comment), so its width is the
-		// exact count.
 		size = boundary - f.head
 		if size < 0 {
 			size = -size
@@ -629,10 +613,8 @@ func (f Flow[T]) Reverse() Flow[T] {
 	return fromSlice(s)
 }
 
-// SortFunc sorts the elements using cmp, which reports a negative number to
-// mean a sorts before b, a positive number to mean a sorts after b, and zero
-// to mean they're equal (the same contract as [slices.SortFunc]). The sort is
-// stable.
+// SortFunc sorts the elements using cmp, with the same ordering contract as
+// [slices.SortFunc]. The sort is stable.
 //
 // Sorting needs every element up front, so SortFunc materializes the Flow
 // immediately (see [Flow]).
@@ -658,7 +640,7 @@ func (f Flow[T]) SortBy[K cmp.Ordered](key func(T) K) Flow[T] {
 	// key to the comparator, in every shape measured but one: with an identity
 	// key over ints the two draw even on time, and the permutation costs more
 	// memory. The margin grows with the cost of key and the size of the
-	// element, which is the trade this takes. See docs/performance.md and
+	// element. See docs/performance.md and
 	// BenchmarkSortByStrategies.
 	s := f.Slice()
 	keys := make([]K, len(s))
@@ -762,9 +744,9 @@ func (f Flow[T]) Cache() Flow[T] {
 }
 
 // asSeq normalizes f to the sequential representation: a no-op if f is
-// already sequential, otherwise its elements pulled through Seq() into a
+// already sequential, otherwise it pulls its elements through Seq() into a
 // fresh sequential Flow. It is Cache's counterpart for the other internal
-// representation, forcing the lazy evaluation path even when f is indexed.
+// representation.
 func (f Flow[T]) asSeq() Flow[T] {
 	if f.at == nil {
 		return f
@@ -938,7 +920,7 @@ func (f Flow[T]) Last() Optional[T] {
 //
 // A NaN key orders before every non-NaN key, as under [cmp.Compare] and
 // [Flow.SortBy], so a NaN key wins wherever it appears in the Flow. Among
-// several NaN keys the first wins, as for any other tie.
+// several NaN keys the first wins.
 func (f Flow[T]) MinBy[K cmp.Ordered](key func(T) K) Optional[T] {
 	best := None[T]()
 	var bestKey K
@@ -1078,17 +1060,15 @@ func Zip[T, U any](a Flow[T], b Flow[U]) Flow[Pair[T, U]] {
 // first-occurrence order.
 //
 // Distinct cannot be a method: it requires T itself to satisfy comparable,
-// which a parameterized method cannot express (unlike [Flow.DistinctBy],
-// whose constraint attaches to its own new type parameter, not the
-// receiver's T). Use DistinctBy when T is not comparable, or to dedupe by a
+// which a parameterized method cannot express (unlike [Flow.DistinctBy]).
+// Use DistinctBy when T is not comparable, or to dedupe by a
 // derived key instead of the whole value. In a chain, [Flow.To] applies it
 // postfix: f.To(Distinct).
 func Distinct[T comparable](f Flow[T]) Flow[T] {
 	return f.DistinctBy(Identity)
 }
 
-// Contains reports whether v is among the elements of f. It is equivalent to
-// f.Any(Equal(v)).
+// Contains reports whether v is among the elements of f.
 //
 // Contains cannot be a method, for the same reason as [Distinct]. Use
 // [Flow.Any] with a custom predicate when T is not comparable or the match

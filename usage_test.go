@@ -134,7 +134,6 @@ func TestGrooveComposition(t *testing.T) {
 // Element-wise min/max are spelled with MinBy/MaxBy and Identity rather
 // than dedicated Min/Max methods. Membership is the free function Contains.
 // See the MinBy and Contains doc comments for why the methods cannot exist.
-// This test pins the idioms down so they keep compiling.
 func TestElementWiseIdioms(t *testing.T) {
 	t.Parallel()
 

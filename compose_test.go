@@ -180,7 +180,7 @@ func TestTrackLengths(t *testing.T) {
 }
 
 // bang and boom are the stage functions shared by the Track tests below that
-// need a failing stage: TestTrackFailurePosition and TestTrackOnBreak.
+// need a failing stage.
 func bang(s string) (string, error) { return s + "!", nil }
 
 func boom(string) (string, error) { return "", errors.New("boom") }
@@ -303,8 +303,7 @@ func TestTrackNestedPipeline(t *testing.T) {
 	sentinel := errors.New("inner boom")
 	inner := Groove(strconv.Atoi).Jam(func(int) (int, error) { return 0, sentinel })
 
-	// inner.Play is already an Fe[string, int]; Jam takes it directly, the
-	// same interop TestMethodValueInterop pins.
+	// inner.Play is already an Fe[string, int]; Jam takes it directly.
 	outer := Groove(NilError(Identity[string])).
 		Jam(inner.Play).
 		Jam(NilError(strconv.Itoa))
@@ -685,9 +684,7 @@ func TestTrackOnBreak(t *testing.T) {
 }
 
 // TestChainBranchingFromSharedPrefix pins that extending a Chain returns a
-// new value and leaves the chain it was built from untouched: base and long
-// share the same first two stages, but appending to long must not change
-// what base itself computes.
+// new value and leaves the chain it was built from untouched.
 func TestChainBranchingFromSharedPrefix(t *testing.T) {
 	t.Parallel()
 	base := Compose(mul2).Then(add1)

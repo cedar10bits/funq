@@ -12,14 +12,14 @@ import (
 // [Optional.FlatMap] can change the value type while keeping the chain
 // fluent and the result an Optional.
 //
-// Optional is intentionally decoupled from Flow: it offers a small, focused
-// API (presence, mapping, fallback) rather than the full sequence interface.
-// Use [Optional.AsFlow] or [Optional.Seq] to bridge into Flow operations.
+// Optional is intentionally decoupled from Flow, with a small API rather than
+// the full sequence interface. Use [Optional.AsFlow] or [Optional.Seq] to
+// bridge into Flow operations.
 //
-// JSON support is scoped to the Optional's role as a fluent chain / return
-// value that may be serialized (e.g. in an HTTP response), not as a persisted
-// struct-field type. For database round-trips use database/sql's Null[T].
-// Optional intentionally does not implement sql.Scanner / driver.Valuer.
+// JSON support is scoped to the Optional's role as a serializable fluent
+// chain / return value, not as a persisted struct-field type. It deliberately
+// implements no sql.Scanner / driver.Valuer, so use database/sql's Null[T]
+// for database round-trips.
 //
 // The zero value is None.
 type Optional[T any] struct {
@@ -182,9 +182,8 @@ func (o Optional[T]) Ptr() *T {
 	return &v
 }
 
-// String renders Some as "Some(v)" and None as "None", so %v and %s (e.g. in
-// a log line) show a readable form instead of the struct's unexported
-// fields.
+// String renders Some as "Some(v)" and None as "None", so %v and %s show a
+// readable form instead of the struct's unexported fields.
 func (o Optional[T]) String() string {
 	if !o.ok {
 		return "None"
@@ -203,8 +202,7 @@ func (o Optional[T]) MarshalJSON() ([]byte, error) {
 // UnmarshalJSON decodes JSON into the Optional. A JSON null yields None; any
 // other value is decoded into T and yields Some. When the Optional is a value-
 // type struct field, an absent field leaves it at its zero value (None)
-// because UnmarshalJSON is never called. Absent and null therefore both map
-// to None.
+// because UnmarshalJSON is never called.
 func (o *Optional[T]) UnmarshalJSON(data []byte) error {
 	if string(data) == "null" {
 		*o = None[T]()

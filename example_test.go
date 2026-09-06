@@ -55,7 +55,7 @@ func ExampleFromSeq() {
 
 func ExampleFlow_Cache() {
 	// A chain's transforms may re-run on each terminal call, so a side-effecting
-	// Map or Filter can fire more than once overall; either keep transforms pure
+	// Map or Filter can fire more than once overall. Either keep transforms pure
 	// or use Cache to avoid repeated side effects.
 	calls := 0
 	eager := funq.From(1, 2, 3).Map(func(v int) int {

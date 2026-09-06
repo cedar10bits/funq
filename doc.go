@@ -4,11 +4,10 @@
 //
 //   - [Flow] is an immutable sequence with Map / Filter / Take and other
 //     transformations. It is eager or lazy depending on its source (values,
-//     generator functions, or iter.Seq), not on how many times a pipeline
-//     built on it runs. A pipeline cannot be relied on to run only once: a
-//     terminal operation that needs the elements may re-run it. See the
-//     [Flow] documentation for the re-computation and concurrency caveats
-//     and for Cache, which materializes the result.
+//     generator functions, or iter.Seq). A pipeline cannot be relied on to
+//     run only once: a terminal operation that needs the elements may re-run
+//     it. See the [Flow] documentation for the re-computation and concurrency
+//     caveats and for Cache, which materializes the result.
 //   - [Optional] models a value that may be absent, with Map / FlatMap / OrElse
 //     and conversions to and from Flow, (value, error), and JSON.
 //   - [Compose] and [Groove] build function pipelines one stage at a time via

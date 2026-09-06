@@ -6,10 +6,9 @@ import (
 	"slices"
 )
 
-// Fp is a plain function func(T) U that does not return an error.
-// The p suffix means "plain". It is the counterpart of [Fe], whose e suffix
-// means "error". (Plain does not imply purity: an Fp may still have side
-// effects.)
+// Fp is a plain function func(T) U that does not return an error. It is the
+// counterpart of [Fe]: the p suffix means "plain", the e means "error".
+// (Plain does not imply purity: an Fp may still have side effects.)
 type Fp[T, U any] = func(T) U
 
 // Fe is a function func(T) (U, error) that may fail.
@@ -39,8 +38,7 @@ func NilError[T, U any](f Fp[T, U]) Fe[T, U] {
 // PanicOnError converts an [Fe] to an [Fp], panicking if f returns an error.
 //
 // The panic value is an error wrapping the original err with %w, so a
-// recover call can inspect it with errors.Is/errors.AsType to reach the
-// original error.
+// recover call can inspect it with errors.Is/errors.AsType.
 func PanicOnError[T, U any](f Fe[T, U]) Fp[T, U] {
 	return func(x T) U {
 		u, err := f(x)
@@ -67,8 +65,7 @@ func IgnoreError[T, U any](f Fe[T, U], orElse U) Fp[T, U] {
 // absence rather than failure can join a [Groove] pipeline. It is the
 // [Optional] counterpart of [NilError], [PanicOnError] and [IgnoreError].
 //
-// The body is just [Optional.OrErr] applied to f's result. The wrapper is
-// point-free, so it drops straight into a Jam call without a closure:
+// The wrapper is point-free, so it drops straight into a Jam call:
 //
 //	Groove(ErrOnNone(lookup, ErrNotFound)).Jam(save)
 func ErrOnNone[T, U any](f Fp[T, Optional[U]], err error) Fe[T, U] {
@@ -96,8 +93,7 @@ func (c Chain[T0, T1]) Then[T2 any](g Fp[T1, T2]) Chain[T0, T2] {
 	return Chain[T0, T2]{run: func(t0 T0) T2 { return g(c.run(t0)) }}
 }
 
-// Run executes the chain from t0 through every stage in order and returns
-// the final result.
+// Run executes the chain from t0 through every stage in order.
 //
 // Run is itself a method value of type Fp[T0, T1]: a built Chain drops
 // straight into anything that takes a plain function, for example
@@ -182,13 +178,13 @@ func (t Track[T0, T1]) Jam[T2 any](g Fe[T1, T2]) Track[T0, T2] {
 // It adds no stage of its own: it neither runs compensate nor changes the
 // track's stage count or output type, so the positions [Track.Play] reports
 // are unaffected. compensate runs only when the pipeline fails after this
-// point — whether a later stage returns an error or panics, like the defer
-// it stands in for — and never on success. See [Track.Play] for the rollback
-// order and how a compensation's own failure is handled.
+// point — whether a later stage returns an error or panics — and never on
+// success.
 //
 // Rollback is per-track: register a compensation on the outer track when it
-// has to cover the whole pipeline. See [Track.Play] for how nesting scopes
-// it.
+// has to cover the whole pipeline. See [Track.Play] for the rollback order,
+// how a compensation's own failure is handled, and how nesting scopes
+// rollback.
 func (t Track[T0, T1]) OnBreak(compensate func(T1) error) Track[T0, T1] {
 	stage := t.stages
 	return Track[T0, T1]{
@@ -299,12 +295,10 @@ var (
 	_ interface{ Unwrap() error } = (*grooveError)(nil)
 )
 
-// errPrefix leads every [grooveError] message. It names the package first so
-// the message is greppable back to funq, then the API within it.
+// errPrefix leads every [grooveError] message, naming the package first so
+// the message is greppable back to funq.
 const errPrefix = "funq: Groove pipeline failed"
 
-// Error formats errPrefix followed by the stage that failed, how many stages
-// the pipeline has, and the underlying error.
 func (e *grooveError) Error() string {
 	return fmt.Sprintf("%s at stage %d of %d: %v", errPrefix, e.stage, e.of, e.err)
 }

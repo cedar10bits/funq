@@ -50,8 +50,7 @@ func TestFromSeq(t *testing.T) {
 	eq(t, []int{1, 2, 3}, FromSeq(slices.Values([]int{1, 2, 3})))
 	eq(t, []int{}, FromSeq(slices.Values([]int{})))
 
-	// FromSeq(f.Seq()) round-trips: Seq is the outbound direction FromSeq
-	// mirrors.
+	// FromSeq(f.Seq()) round-trips.
 	f := FromFn(5, Identity).Filter(even)
 	assertEqual(t, f.Slice(), FromSeq(f.Seq()).Slice())
 
@@ -189,12 +188,12 @@ func TestMapIndexed(t *testing.T) {
 	eq(t, []iv{}, From[int]().MapIndexed(pair))
 	eq(t, []iv{{0, 10}, {1, 20}, {2, 30}}, From(10, 20, 30).MapIndexed(pair))
 	eq(t, []iv{{0, 10}, {1, 20}}, From(10, 20).asSeq().MapIndexed(pair))
-	// logical position, not physical: holes from Filter are not counted
+	// logical position: holes from Filter are not counted
 	eq(t, []iv{{0, 0}, {1, 4}, {2, 8}}, FromFn(10, Identity).Filter(func(n int) bool { return n%4 == 0 }).MapIndexed(pair))
 	// logical position after Reverse restarts from 0 in the new order
 	eq(t, []iv{{0, 4}, {1, 3}, {2, 2}, {3, 1}, {4, 0}}, FromFn(5, Identity).Reverse().MapIndexed(pair))
-	// First stops after the first element, exercising the early-termination
-	// (!yield) branch of MapIndexed's generator.
+	// First stops after the first element, exercising the !yield branch of
+	// MapIndexed's generator.
 	assertEqual(t, Some(iv{0, 10}), From(10, 20, 30).MapIndexed(pair).First())
 }
 
@@ -231,9 +230,9 @@ func TestFlatMap(t *testing.T) {
 	got2 := From(1, 2).FlatMap(func(n int) Flow[string] { return From(strconv.Itoa(n)) }).Slice()
 	assertEqual(t, []string{"1", "2"}, got2)
 
-	// First stops after the first flattened element, exercising the
-	// early-termination (!yield) branch of FlatMap's generator; fn must not
-	// run for outer elements past the one that produced it.
+	// First stops after the first flattened element, exercising the !yield
+	// branch of FlatMap's generator; fn must not run for outer elements past
+	// the one that produced it.
 	calls := 0
 	got3 := FromFn(3, Identity).FlatMap(func(i int) Flow[int] {
 		calls++
@@ -428,8 +427,8 @@ func TestTake(t *testing.T) {
 // TestTakeShortCircuitsLazySource guards the README's headline lazy-evaluation
 // claim, which a boundary-scanning Take broke. Locating the boundary needed
 // the (k+1)-th surviving element, so a Filter matching exactly k elements
-// scanned the whole source, and the returned Flow then scanned it again on
-// every terminal call — 2,000,000 generator calls to produce 10 elements.
+// scanned the whole source. The returned Flow then scanned it again on every
+// terminal call — 2,000,000 generator calls to produce 10 elements.
 func TestTakeShortCircuitsLazySource(t *testing.T) {
 	t.Parallel()
 	const n = 1_000_000
@@ -564,7 +563,7 @@ func TestSortByCallsKeyOncePerElement(t *testing.T) {
 // that any loss of stability shows up.
 func TestSortByMatchesComparatorSort(t *testing.T) {
 	t.Parallel()
-	// Fixed seed so a failure reproduces, as in TestDifferentialIndexedVsSequential.
+	// Fixed seed so a failure reproduces.
 	r := rand.New(rand.NewPCG(0x5024, 0xB1AD))
 	key := func(x kv) int { return x.k }
 	for trial := range 500 {
@@ -736,8 +735,8 @@ func TestChunk(t *testing.T) {
 	assertEqual(t, []int{1, 2, 3, 4}, src.Slice(), "mutating a chunk must not alias the source Flow")
 	assertEqual(t, [][]int{{1, 2}, {3, 4}}, chunked.Slice(), "mutating a chunk must not affect a fresh traversal")
 
-	// First stops after the first full chunk, exercising the
-	// early-termination (!yield) branch of Chunk's generator.
+	// First stops after the first full chunk, exercising the !yield branch
+	// of Chunk's generator.
 	assertEqual(t, Some([]int{0, 1}), Chunk[int](2)(FromFn(6, Identity)).First())
 }
 
@@ -757,8 +756,8 @@ func TestZip(t *testing.T) {
 		Zip(From(1, 2, 3), From(10, 20).asSeq()))
 	eq(t, []Pair[int, int]{{1, 10}, {2, 20}},
 		Zip(From(1, 2).asSeq(), From(10, 20, 30)))
-	// First stops after the first pair, exercising the early-termination
-	// (!yield) branch of the general (non-swapped-driver) path: both sides
-	// sequential, so neither takes the a.at != nil && b.at == nil shortcut.
+	// First stops after the first pair, exercising the !yield branch of the
+	// general path: both sides sequential, so neither takes the a.at != nil
+	// && b.at == nil shortcut.
 	assertEqual(t, Some(Pair[int, int]{1, 10}), Zip(From(1, 2).asSeq(), From(10, 20, 30).asSeq()).First())
 }

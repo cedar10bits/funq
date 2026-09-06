@@ -47,7 +47,6 @@ func BenchmarkLarge(b *testing.B) {
 
 // BenchmarkVsLoop compares a representative Flow pipeline against an equivalent
 // hand-written loop, to quantify the per-element overhead of the fluent API.
-// The pipeline keeps even numbers, doubles them, and sums the result.
 func BenchmarkVsLoop(b *testing.B) {
 	const n = 1_000
 	src := make([]int, n)
@@ -201,8 +200,8 @@ func BenchmarkZip(b *testing.B) {
 // f.asSeq() instead of consuming the pipeline eagerly at construction time.
 // They exist only to justify, via BenchmarkTakeDropStrategies and
 // BenchmarkTakeShortCircuit, why flow.go keeps the eager implementation
-// despite it evaluating part of the pipeline at construction time (see the
-// Flow.Drop and Flow.Take doc comments).
+// despite its up-front evaluation cost (see the Flow.Drop and Flow.Take
+// doc comments).
 
 func dropLazy[T any](f Flow[T], n int) Flow[T] {
 	if f.at == nil || f.size != sizeUnknown {
@@ -381,9 +380,9 @@ func BenchmarkTakeShortCircuit(b *testing.B) {
 // depth=2 the ordering these two exist to test is chained indexed losing to
 // chained sequential, growing worse with depth (roughly on par at depth=2,
 // chained sequential clearly ahead by depth=4). filter_and matches or beats
-// chained sequential at both depths while keeping the indexed representation
-// — see the note in Flow.Filter's implementation for why that representation
-// matters beyond this benchmark's own throughput numbers.
+// chained sequential at depth=2 and depth=4 while keeping the indexed
+// representation — see the note in Flow.Filter's implementation for why that
+// representation matters beyond this benchmark's own throughput numbers.
 func BenchmarkFilterRepresentation(b *testing.B) {
 	const n = 1_000_000
 	src := make([]int, n)
