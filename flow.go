@@ -53,17 +53,19 @@ import (
 //
 //   - Whether its element count is statically known. [From], [FromFn] and
 //     [Optional.AsFlow] establish it and materializing re-establishes it;
-//     [Flow.Map] and [Flow.Reverse] carry it from any input, while [Flow.Take],
-//     [Flow.Drop], [Flow.TakeWhile], [Flow.DropWhile] and a [Flow.Concat] of
-//     inputs that all have one carry it only from a random-access input.
-//     [Flow.Accumulate] derives it (the input's plus one) onto a forward-only
-//     Flow. [Flow.Filter] gives it up.
+//     [Flow.Map], [Flow.MapIndexed] and [Flow.Reverse] carry it from any
+//     input, while [Flow.Take], [Flow.Drop], [Flow.TakeWhile], [Flow.DropWhile]
+//     and a [Flow.Concat] of inputs that all have one carry it only from a
+//     random-access input. [Flow.Accumulate] derives it as the input's plus
+//     one, [Zip] as the smaller of its two inputs', [Chunk] as the input's
+//     over the chunk size rounded up — each onto a forward-only Flow.
+//     [Flow.Filter] gives it up.
 //   - Whether it is still random-access. [FromSeq] builds a forward-only Flow
-//     directly; [Flow.Accumulate] leaves the Flow forward-only while keeping
-//     its count statically known; [Flow.FlatMap], [Flow.MapIndexed],
-//     [Flow.DistinctBy], [Distinct], [Zip], [Chunk] and a [Flow.Concat] whose
-//     inputs do not all have a known count leave the Flow forward-only
-//     instead, with no statically known count either, until it is
+//     directly; [Flow.Accumulate], [Flow.MapIndexed], [Zip] and [Chunk] leave
+//     the Flow forward-only but keep a statically known count when their
+//     inputs have one; [Flow.FlatMap], [Flow.DistinctBy], [Distinct] and a
+//     [Flow.Concat] whose inputs do not all have a known count leave it
+//     forward-only with no statically known count either, until it is
 //     materialized again. [Flow.Reverse] materializes such a Flow, and
 //     [Flow.Count], [Flow.IsEmpty] and [Flow.Last] have to traverse it.
 //
@@ -382,7 +384,7 @@ func (f Flow[T]) Map[U any](fn func(T) U) Flow[U] {
 // [Flow.Map], MapIndexed always leaves the Flow forward-only (see [Flow]).
 func (f Flow[T]) MapIndexed[U any](fn func(int, T) U) Flow[U] {
 	src := f
-	return fromSeq(func(yield func(U) bool) {
+	scan := func(yield func(U) bool) {
 		i := 0
 		for v := range src.Seq() {
 			if !yield(fn(i, v)) {
@@ -390,7 +392,13 @@ func (f Flow[T]) MapIndexed[U any](fn func(int, T) U) Flow[U] {
 			}
 			i++
 		}
-	})
+	}
+	if f.size == sizeUnknown {
+		return fromSeq(scan)
+	}
+	// Not fromSeq, which would drop the size (see sizeUnknown): MapIndexed is
+	// 1:1, so a known input count carries onto the result.
+	return Flow[U]{seq: scan, size: f.size}
 }
 
 // FlatMap maps each element to a Flow and concatenates the results.
@@ -1118,7 +1126,7 @@ func Zip[T, U any](a Flow[T], b Flow[U]) Flow[Pair[T, U]] {
 	// 1.27 and also rejects a non-generic method returning Flow[[]T]. Flow[T]'s
 	// method set would reference Flow[Pair[T, U]], whose method set references
 	// Flow[Pair[Pair[T, U], V]], without bound, so the compiler rejects it.
-	return fromSeq(func(yield func(Pair[T, U]) bool) {
+	seq := func(yield func(Pair[T, U]) bool) {
 		// One side is ranged over (the driver), the other pulled one element
 		// at a time. An indexed side can be pulled directly, so prefer it as
 		// the pulled side: iter.Pull's coroutine adapter, the only way to
@@ -1153,7 +1161,13 @@ func Zip[T, U any](a Flow[T], b Flow[U]) Flow[Pair[T, U]] {
 				return
 			}
 		}
-	})
+	}
+	if a.size == sizeUnknown || b.size == sizeUnknown {
+		return fromSeq(seq)
+	}
+	// Not fromSeq: Zip stops with the shorter side, so the smaller of two
+	// known counts is exact.
+	return Flow[Pair[T, U]]{seq: seq, size: min(a.size, b.size)}
 }
 
 // Distinct returns a Flow that yields each distinct element of f once, in
@@ -1193,7 +1207,7 @@ func Chunk[T any](n int) func(Flow[T]) Flow[[]T] {
 		panic("funq: Chunk called with n < 1")
 	}
 	return func(f Flow[T]) Flow[[]T] {
-		return fromSeq(func(yield func([]T) bool) {
+		seq := func(yield func([]T) bool) {
 			chunk := make([]T, 0, n)
 			for v := range f.Seq() {
 				chunk = append(chunk, v)
@@ -1207,6 +1221,12 @@ func Chunk[T any](n int) func(Flow[T]) Flow[[]T] {
 			if len(chunk) > 0 {
 				yield(chunk)
 			}
-		})
+		}
+		if f.size == sizeUnknown {
+			return fromSeq(seq)
+		}
+		// Not fromSeq: every element lands in one chunk and the final short
+		// chunk still counts, so ceil(count / n) is exact.
+		return Flow[[]T]{seq: seq, size: (f.size + n - 1) / n}
 	}
 }

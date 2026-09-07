@@ -138,12 +138,16 @@ func TestFlowDocProperties(t *testing.T) {
 		{"MapOfAccumulate", propsOf(base.Accumulate(0, add).Map(mul2)), flowProps{knownCount: true}},
 		{"AccumulateOfUnknown", propsOf(base.Filter(even).Accumulate(0, add)), forwardOnly},
 		{"FlatMap", propsOf(base.FlatMap(func(v int) Flow[int] { return From(v) })), forwardOnly},
-		{"MapIndexed", propsOf(base.MapIndexed(func(i, v int) int { return i + v })), forwardOnly},
 		{"DistinctBy", propsOf(base.DistinctBy(Identity)), forwardOnly},
 		{"Distinct", propsOf(Distinct(base)), forwardOnly},
-		{"Zip", propsOf(Zip(base, base)), forwardOnly},
-		{"Chunk", propsOf(Chunk[int](2)(base)), forwardOnly},
 		{"ConcatOfUnknown", propsOf(From(1, 2).Concat(From(3, 4).Filter(even))), forwardOnly},
+		// Forward-only, yet keep a known count when their inputs carry one.
+		{"MapIndexed", propsOf(base.MapIndexed(func(i, v int) int { return i + v })), flowProps{knownCount: true}},
+		{"Zip", propsOf(Zip(base, base)), flowProps{knownCount: true}},
+		{"Chunk", propsOf(Chunk[int](2)(base)), flowProps{knownCount: true}},
+		{"MapIndexedOfUnknown", propsOf(base.Filter(even).MapIndexed(func(i, v int) int { return i + v })), forwardOnly},
+		{"ZipOfUnknown", propsOf(Zip(base, base.asSeq())), forwardOnly},
+		{"ChunkOfUnknown", propsOf(Chunk[int](2)(base.asSeq())), forwardOnly},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -199,6 +203,11 @@ func TestMapIndexed(t *testing.T) {
 	// First stops after the first element, exercising the !yield branch of
 	// MapIndexed's generator.
 	assertEqual(t, Some(iv{0, 10}), From(10, 20, 30).MapIndexed(pair).First())
+
+	// 1:1, so the count carries through and Slice's fast path fills by index.
+	assertEqual(t, 3, From(10, 20, 30).MapIndexed(pair).size)
+	assertEqual(t, 3, len(From(10, 20, 30).MapIndexed(pair).Slice()))
+	assertEqual(t, sizeUnknown, FromFn(4, Identity).Filter(even).MapIndexed(pair).size)
 }
 
 func TestForEachIndexed(t *testing.T) {
@@ -866,6 +875,13 @@ func TestChunk(t *testing.T) {
 	// First stops after the first full chunk, exercising the !yield branch
 	// of Chunk's generator.
 	assertEqual(t, Some([]int{0, 1}), Chunk[int](2)(FromFn(6, Identity)).First())
+
+	// Known input count gives a known chunk count: ceil(count / n).
+	assertEqual(t, 3, Chunk[int](2)(FromFn(5, Identity)).size)
+	assertEqual(t, 2, Chunk[int](3)(FromFn(6, Identity)).size)
+	assertEqual(t, 0, Chunk[int](3)(From[int]()).size)
+	assertEqual(t, 3, len(Chunk[int](2)(FromFn(5, Identity)).Slice()))
+	assertEqual(t, sizeUnknown, Chunk[int](2)(From(1, 2, 3).asSeq()).size)
 }
 
 func TestZip(t *testing.T) {
@@ -888,4 +904,9 @@ func TestZip(t *testing.T) {
 	// general path: both sides sequential, so neither takes the a.at != nil
 	// && b.at == nil shortcut.
 	assertEqual(t, Some(Pair[int, int]{1, 10}), Zip(From(1, 2).asSeq(), From(10, 20, 30).asSeq()).First())
+
+	// Two known input counts give a known pair count: the smaller one.
+	assertEqual(t, 2, Zip(From(1, 2), From("a", "b", "c")).size)
+	assertEqual(t, 3, len(Zip(FromFn(3, Identity), FromFn(5, Identity)).Slice()))
+	assertEqual(t, sizeUnknown, Zip(From(1, 2), From(3, 4).asSeq()).size)
 }
