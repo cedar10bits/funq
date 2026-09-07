@@ -18,6 +18,10 @@ called out here.
   later stage's failure or panic. See the README or `Track.Play`'s
   documentation for the contract.
 
+### Fixed
+
+- `Concat`: panicked when every input Flow was empty; now returns empty instead.
+
 ## [0.1.0] - 2026-08-23
 
 Initial release. Requires Go 1.27 or later: the type-changing chains below

@@ -796,6 +796,9 @@ func concatIndexed[T any](all []Flow[T]) (Flow[T], bool) {
 		segs = append(segs, segment{start: total, base: base, dir: dir, at: fl.at})
 		total += fl.size
 	}
+	if len(segs) == 0 {
+		return empty[T](), true // otherwise at indexes segs[-1] on its first call
+	}
 	at := func(i int) (T, bool) {
 		k := len(segs) - 1
 		for segs[k].start > i {

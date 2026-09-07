@@ -694,6 +694,12 @@ func TestConcat(t *testing.T) {
 	eq(t, []int{1, 2, 3, 4, 5, 6}, From(1, 2, 3).Concat(From(4, 5), From(6)))
 	eq(t, []int{1, 2}, From[int]().Concat(From(1, 2)))
 	eq(t, []int{1, 2}, From(1, 2).Concat(From[int]()))
+
+	// All inputs empty: concatIndexed must not build an at over an empty segment table.
+	allEmpty := From[int]().Concat(From[int](), From[int]())
+	eq(t, []int{}, allEmpty)
+	assertEqual(t, 0, allEmpty.Count())
+	eq(t, []int{}, allEmpty.Reverse().Take(3))
 }
 
 func TestConcatStaysIndexed(t *testing.T) {
