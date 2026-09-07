@@ -128,6 +128,22 @@ func span(a, b int) int {
 	return a - b
 }
 
+// sizeHint is an upper bound on the element count, for pre-sizing a collection
+// a terminal operation builds, or 0 when no bound is known: the exact count
+// when the size is known, otherwise the physical range width for an indexed
+// Flow (an exact upper bound, as [Flow.Slice] also uses) and 0 for a
+// sequential one. A Flow whose count is unknown because a Filter came before
+// can leave the hint above the eventual count.
+func (f Flow[T]) sizeHint() int {
+	if f.size != sizeUnknown {
+		return f.size
+	}
+	if f.at != nil {
+		return span(f.head, f.tail)
+	}
+	return 0
+}
+
 // From creates an eager Flow backed directly by the given elements, without
 // copying. It returns an empty Flow when no elements are provided.
 //
@@ -445,8 +461,9 @@ func (f Flow[T]) Filter(pred func(T) bool) Flow[T] {
 // be a method (see [Distinct] for why the T-is-the-key form cannot).
 // Distinct(f) is equivalent to f.DistinctBy(Identity).
 func (f Flow[T]) DistinctBy[K comparable](key func(T) K) Flow[T] {
+	hint := f.sizeHint()
 	return fromSeq(func(yield func(T) bool) {
-		seen := make(map[K]struct{})
+		seen := make(map[K]struct{}, hint)
 		for v := range f.Seq() {
 			k := key(v)
 			if _, ok := seen[k]; ok {
@@ -870,15 +887,11 @@ func (f Flow[T]) Slice() []T {
 		}
 		return out
 	}
-	// For an indexed Flow of unknown size (e.g. after Filter), the physical
-	// range width is an exact upper bound on the element count: pre-allocate
-	// it to avoid append regrowth, trading possible over-allocation when the
-	// filter drops many elements. A sequential Flow offers no such bound.
-	capHint := 0
-	if f.at != nil {
-		capHint = span(f.head, f.tail)
-	}
-	out := make([]T, 0, capHint)
+	// For an indexed Flow of unknown size (e.g. after Filter), sizeHint is the
+	// physical range width: pre-allocate it to avoid append regrowth, trading
+	// possible over-allocation when the filter drops many elements. A
+	// sequential Flow offers no such bound.
+	out := make([]T, 0, f.sizeHint())
 	for v := range f.Seq() {
 		out = append(out, v)
 	}
@@ -1029,7 +1042,7 @@ func (f Flow[T]) GroupBy[K comparable](key func(T) K) map[K][]T {
 // to the same key, the first occurrence wins, consistent with
 // [Flow.DistinctBy].
 func (f Flow[T]) ToMap[K comparable](key func(T) K) map[K]T {
-	out := make(map[K]T)
+	out := make(map[K]T, f.sizeHint())
 	for v := range f.Seq() {
 		k := key(v)
 		if _, ok := out[k]; ok {
@@ -1044,7 +1057,10 @@ func (f Flow[T]) ToMap[K comparable](key func(T) K) map[K]T {
 // not, preserving relative order within each side. Both results are
 // materialized (see [Flow]), so the upstream pipeline runs exactly once.
 func (f Flow[T]) Partition(pred func(T) bool) (matched, rest Flow[T]) {
-	var yes, no []T
+	// The sides' lengths sum to the element count, so half the bound fits an
+	// even split exactly; a skewed split costs the larger side one regrowth.
+	half := f.sizeHint() / 2
+	yes, no := make([]T, 0, half), make([]T, 0, half)
 	for v := range f.Seq() {
 		if pred(v) {
 			yes = append(yes, v)

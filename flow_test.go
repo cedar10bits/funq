@@ -753,6 +753,18 @@ func TestPartition(t *testing.T) {
 	assertEqual(t, 4, calls)
 }
 
+func TestSizeHint(t *testing.T) {
+	t.Parallel()
+	// Known count: exact.
+	assertEqual(t, 3, From(1, 2, 3).sizeHint())
+	assertEqual(t, 0, From[int]().sizeHint())
+	// Sequential, count unknown: no bound.
+	assertEqual(t, 0, From(1, 2, 3).asSeq().sizeHint())
+	// Indexed but count unknown after Filter: the physical range width, which
+	// the surviving elements cannot exceed.
+	assertEqual(t, 6, FromFn(6, Identity).Filter(even).sizeHint())
+}
+
 func TestMinBy(t *testing.T) {
 	t.Parallel()
 	assertEqual(t, None[int](), From[int]().MinBy(Identity))
