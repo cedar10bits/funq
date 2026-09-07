@@ -531,6 +531,7 @@ func runAllBenchmarks(n int, b *testing.B) {
 	flatMap := func(f Flow[int]) Flow[int] {
 		return f.FlatMap(func(v int) Flow[int] { return From(v) })
 	}
+	concatOther := FromFn(n, Identity)
 	runIter := func(seq iter.Seq[int]) {
 		for range seq {
 		}
@@ -611,6 +612,41 @@ func runAllBenchmarks(n int, b *testing.B) {
 		{
 			name: "FlatMap",
 			api:  func(i int, f Flow[int]) { _ = flatMap(f).All(True) },
+		},
+		{
+			name: "MapIndexed",
+			api:  func(_ int, f Flow[int]) { _ = f.MapIndexed(func(i, v int) int { return i + v }).All(True) },
+		},
+		{
+			name: "Distinct",
+			api:  func(_ int, f Flow[int]) { _ = Distinct(f).All(True) },
+		},
+		{
+			name: "DistinctBy",
+			api:  func(_ int, f Flow[int]) { _ = f.DistinctBy(Identity).All(True) },
+		},
+		{
+			name: "Partition",
+			api: func(_ int, f Flow[int]) {
+				matched, rest := f.Partition(even)
+				_, _ = matched, rest
+			},
+		},
+		{
+			name: "GroupBy",
+			api:  func(_ int, f Flow[int]) { _ = f.GroupBy(func(v int) int { return v & 15 }) },
+		},
+		{
+			name: "ToMap",
+			api:  func(_ int, f Flow[int]) { _ = f.ToMap(Identity) },
+		},
+		{
+			name: "Chunk",
+			api:  func(_ int, f Flow[int]) { _ = f.To(Chunk[int](16)).Count() },
+		},
+		{
+			name: "Concat",
+			api:  func(_ int, f Flow[int]) { _ = f.Concat(concatOther).All(True) },
 		},
 	}
 
