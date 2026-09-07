@@ -244,6 +244,30 @@ func TestFlatMap(t *testing.T) {
 	}).First()
 	assertEqual(t, Some(0), got3)
 	assertEqual(t, 1, calls, "FlatMap must not evaluate fn past the first surviving element")
+
+	// FlatMap threads its yield through walk on both sides of the flatten:
+	// sequential, reversed, and filtered-then-reversed shapes reach walk's
+	// seq and backward branches, including over holes.
+	eq(t, []int{0, 1, 0, 1, 2},
+		From(2, 3).asSeq().FlatMap(func(i int) Flow[int] { return FromFn(i, Identity).asSeq() }))
+	assertEqual(t, Some(0),
+		From(2, 3).asSeq().FlatMap(func(i int) Flow[int] { return FromFn(i, Identity).asSeq() }).First())
+	eq(t, []int{2, 1, 0, 1, 0},
+		From(3, 2).FlatMap(func(i int) Flow[int] { return FromFn(i, Identity).Reverse() }))
+	eq(t, []int{4, 2, 0},
+		From(1).FlatMap(func(int) Flow[int] { return FromFn(5, Identity).Filter(even).Reverse() }))
+	eq(t, []int{0, 0, 1},
+		From(2).FlatMap(func(i int) Flow[int] { return FromFn(i, Identity) }).
+			FlatMap(func(j int) Flow[int] { return FromFn(j+1, Identity) }))
+
+	// A stop partway through an inner Flow must propagate out of both walks.
+	calls = 0
+	got4 := FromFn(3, Identity).FlatMap(func(i int) Flow[int] {
+		calls++
+		return FromFn(4, func(j int) int { return i*10 + j })
+	}).Take(6).Slice()
+	assertEqual(t, []int{0, 1, 2, 3, 10, 11}, got4)
+	assertEqual(t, 2, calls, "fn stops with the second inner Flow, where Take(6) is satisfied")
 }
 
 func TestFold(t *testing.T) {

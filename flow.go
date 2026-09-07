@@ -239,6 +239,36 @@ func (f Flow[T]) Seq() iter.Seq[T] {
 	}
 }
 
+// walk is the body of Seq, callable without the iter.Seq closure Seq wraps it
+// in. It feeds f's elements to yield in iteration order and returns false as
+// soon as yield does, true once every element has been delivered. FlatMap
+// threads its outer yield straight through walk, so a nested Flow costs no
+// per-element closure. Seq duplicates this body rather than returning f.walk,
+// which would add one alloc to every pipeline.
+func (f Flow[T]) walk(yield func(T) bool) bool {
+	if f.at != nil {
+		dir, i, tail := forward, f.head, f.tail
+		if f.head > f.tail {
+			dir, i, tail = backward, f.head-1, f.tail-1
+		}
+		for ; i != tail; i += dir {
+			if v, ok := f.at(i); ok && !yield(v) {
+				return false
+			}
+		}
+		return true
+	}
+	if f.seq == nil {
+		return true
+	}
+	for v := range f.seq {
+		if !yield(v) {
+			return false
+		}
+	}
+	return true
+}
+
 // pull returns a stateful cursor over the live elements of an indexed Flow,
 // in iteration order. Each call returns the physical index the next live
 // element was found at, the element itself, and true; or false once
@@ -367,13 +397,9 @@ func (f Flow[T]) MapIndexed[U any](fn func(int, T) U) Flow[U] {
 func (f Flow[T]) FlatMap[U any](fn func(T) Flow[U]) Flow[U] {
 	src := f
 	return fromSeq(func(yield func(U) bool) {
-		for v := range src.Seq() {
-			for u := range fn(v).Seq() {
-				if !yield(u) {
-					return
-				}
-			}
-		}
+		src.walk(func(v T) bool {
+			return fn(v).walk(yield)
+		})
 	})
 }
 
