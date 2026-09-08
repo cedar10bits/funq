@@ -790,6 +790,20 @@ func TestPartition(t *testing.T) {
 	eq(t, []int{0, 2}, matched)
 	eq(t, []int{1, 3}, rest)
 	assertEqual(t, 4, calls)
+
+	// sizeHint is a loose upper bound after Filter: the single buffer is
+	// over-sized and the split still lands correctly around the middle gap.
+	matched, rest = FromFn(10, Identity).Filter(func(i int) bool { return i < 6 }).Partition(even)
+	eq(t, []int{0, 2, 4}, matched)
+	eq(t, []int{1, 3, 5}, rest)
+
+	// one side empty
+	matched, rest = FromFn(4, Identity).Partition(True)
+	eq(t, []int{0, 1, 2, 3}, matched)
+	eq(t, []int{}, rest)
+	matched, rest = FromFn(4, Identity).Partition(False)
+	eq(t, []int{}, matched)
+	eq(t, []int{0, 1, 2, 3}, rest)
 }
 
 func TestSizeHint(t *testing.T) {

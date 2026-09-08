@@ -1094,18 +1094,33 @@ func (f Flow[T]) ToMap[K comparable](key func(T) K) map[K]T {
 // not, preserving relative order within each side. Both results are
 // materialized (see [Flow]), so the upstream pipeline runs exactly once.
 func (f Flow[T]) Partition(pred func(T) bool) (matched, rest Flow[T]) {
-	// The sides' lengths sum to the element count, so half the bound fits an
-	// even split exactly; a skewed split costs the larger side one regrowth.
-	half := f.sizeHint() / 2
-	yes, no := make([]T, 0, half), make([]T, 0, half)
+	n := f.sizeHint()
+	if n == 0 {
+		// No count bound (sequential, unknown size): can't pre-size one buffer.
+		var yes, no []T
+		for v := range f.Seq() {
+			if pred(v) {
+				yes = append(yes, v)
+			} else {
+				no = append(no, v)
+			}
+		}
+		return fromSlice(yes), fromSlice(no)
+	}
+	// One buffer, filled from both ends; an over-count (sizeHint is an upper
+	// bound) leaves a harmless gap in the middle. rest fills backward, hence Reverse.
+	buf := make([]T, n)
+	head, tail := 0, n
 	for v := range f.Seq() {
 		if pred(v) {
-			yes = append(yes, v)
+			buf[head] = v
+			head++
 		} else {
-			no = append(no, v)
+			tail--
+			buf[tail] = v
 		}
 	}
-	return fromSlice(yes), fromSlice(no)
+	return fromSlice(buf[:head]), fromSlice(buf[tail:]).Reverse()
 }
 
 // Pair holds two values of possibly different types, e.g. the result of Zip.
