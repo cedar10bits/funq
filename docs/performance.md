@@ -1,6 +1,6 @@
 # Performance
 
-> All figures in this section were measured on `go1.27.0`, darwin/arm64
+> All figures in this section were measured on `go1.27.1`, darwin/arm64
 > (Apple M2). Absolute numbers vary by machine and Go version — the ratios
 > are the point. See the reproduce commands at the end of this document.
 >
@@ -100,16 +100,16 @@ to the comparator instead of sorting an index permutation. At n=1,000,000:
 
 | Shape                 | permutation | comparator | comparator/permutation |
 | --------------------- | ----------- | ---------- | ---------------------- |
-| int, key=identity     | ~489 ms/op  | ~467 ms/op | ~1.0x                  |
-| 64B elem, key=field   | ~798 ms/op  | ~1.33 s/op | ~1.7x                  |
-| 64B elem, key=tolower | ~915 ms/op  | ~3.80 s/op | ~4.2x                  |
+| int, key=identity     | ~276 ms/op  | ~277 ms/op | ~1.0x                  |
+| 64B elem, key=field   | ~581 ms/op  | ~852 ms/op | ~1.5x                  |
+| 64B elem, key=tolower | ~585 ms/op  | ~2.45 s/op | ~4.2x                  |
 
 **Memory**
 
 | Shape                 | permutation              | comparator               | permutation/comparator |
 | --------------------- | ------------------------ | ------------------------ | ---------------------- |
 | int, key=identity     | ~40.0 MB/op, 11 allocs   | ~16.0 MB/op, 8 allocs    | ~2.5x                  |
-| 64B elem, key=field   | ~216 MB/op, 12 allocs    | ~128 MB/op, 8 allocs     | ~1.7x                  |
+| 64B elem, key=field   | ~216 MB/op, 11 allocs    | ~128 MB/op, 8 allocs     | ~1.7x                  |
 | 64B elem, key=tolower | ~232 MB/op, 1.00M allocs | ~937 MB/op, 50.6M allocs | ~0.25x                 |
 
 The identity/int shape is the one that costs permutation something: the two
@@ -119,7 +119,7 @@ described above — those alone would be 2.0x. The third is `SortBy`'s own
 output slice: the comparator formulation doesn't need one, because
 `SortFunc` sorts in place and returns the same slice it was given. Once
 either axis — element size or key cost — moves, permutation wins outright.
-With a 64-byte element it's ~1.7x faster. With a non-trivial key over
+With a 64-byte element it's ~1.5x faster. With a non-trivial key over
 that same element (`strings.ToLower`) it's ~4.2x faster while using a
 quarter of the memory, because `key` runs once per element instead of ~50
 times — visible in the allocation counts (1.00M vs 50.6M allocs/op).
@@ -130,9 +130,9 @@ shapes:
 
 | n         | int, key=identity | 64B elem, key=field | 64B elem, key=tolower |
 | --------- | ----------------- | ------------------- | --------------------- |
-| 100       | ~1.2x             | ~1.8x               | ~4.8x                 |
+| 100       | ~1.2x             | ~1.7x               | ~4.7x                 |
 | 10,000    | ~1.0x             | ~1.6x               | ~4.7x                 |
-| 1,000,000 | ~1.0x             | ~1.7x               | ~4.2x                 |
+| 1,000,000 | ~1.0x             | ~1.5x               | ~4.2x                 |
 
 (comparator/permutation time ratio; >1x means permutation is faster). Only
 identity/int converges to a draw, by n=10,000; the other two shapes' edge
@@ -172,9 +172,9 @@ also allocates where the loop allocates nothing. A representative pipeline
 
 | Approach                | Time       | Allocations     |
 | ----------------------- | ---------- | --------------- |
-| Hand-written loop       | ~1.0 µs/op | 0 B, 0 allocs   |
-| stdlib iter composition | ~6.6 µs/op | 40 B, 3 allocs  |
-| Flow pipeline           | ~8.3 µs/op | 184 B, 6 allocs |
+| Hand-written loop       | ~0.6 µs/op | 0 B, 0 allocs   |
+| stdlib iter composition | ~3.8 µs/op | 40 B, 3 allocs  |
+| Flow pipeline           | ~4.7 µs/op | 184 B, 6 allocs |
 
 So **Flow is roughly an order of magnitude slower than a hand-written loop on
 a full traversal.** Its value is *readability and composition*, not raw
@@ -185,9 +185,9 @@ Most of that order of magnitude, though, is not a funq-specific cost. The
 composing hand-rolled `Filter`/`Map` combinators (the standard library
 doesn't ship them) instead of a `for` loop — and that alone already costs
 roughly 6x the hand-written loop. Flow adds only ~1.3x on top of that
-(~8.3 µs vs ~6.6 µs/op).
+(~4.7 µs vs ~3.8 µs/op).
 
-In absolute terms the overhead is roughly 7 ns per element, so what
+In absolute terms the overhead is roughly 4 ns per element, so what
 matters is elements × calls per second. A handler filtering a few thousand
 items per request pays microseconds, noise next to any I/O. A scan over
 millions of elements per frame or per request pays tens of milliseconds.
@@ -199,9 +199,9 @@ an identity map rather than the doubling measured above) over 1,000 ints:
 
 | Per-element work | Flow        | Loop        | Flow/Loop |
 | ---------------- | ----------- | ----------- | --------- |
-| 0 (identity map) | ~8.6 µs/op  | ~1.3 µs/op  | ~6.7x     |
-| 10 iterations    | ~24.4 µs/op | ~16.6 µs/op | ~1.5x     |
-| 100 iterations   | ~357 µs/op  | ~351 µs/op  | ~1.0x     |
+| 0 (identity map) | ~4.9 µs/op  | ~0.73 µs/op | ~6.7x     |
+| 10 iterations    | ~13.6 µs/op | ~9.5 µs/op  | ~1.4x     |
+| 100 iterations   | ~203 µs/op  | ~208 µs/op  | ~1.0x     |
 
 The overhead is fixed — the same closures and `iter.Seq` machinery run either
 way — so real per-element work drowns it out.
@@ -215,8 +215,8 @@ keeping only the first 3:
 
 | Approach                     | Time       |
 | ---------------------------- | ---------- |
-| Flow (`FromFn(...).Take(3)`) | ~1.1 µs/op |
-| Materialize all, then slice  | ~321 ms/op |
+| Flow (`FromFn(...).Take(3)`) | ~0.6 µs/op |
+| Materialize all, then slice  | ~181 ms/op |
 
 Here laziness turns an O(N) computation into O(1). Reach for Flow when the
 pipeline reads clearly and either the data set is small or a lazy source lets
