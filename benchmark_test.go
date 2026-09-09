@@ -443,9 +443,8 @@ type padded struct {
 // access it still wins, because the sort swaps indices rather than whole
 // elements. Where neither axis applies — ints keyed by Identity — the two
 // land close in time, and the permutation sort's cost shows up as memory
-// instead: three extra slices of len n (keys, the index permutation, and the
-// output — SortFunc's in-place sort needs none of them). flow.go therefore
-// keeps it.
+// instead: one extra slice of len n (the key/index pairs — SortFunc sorts the
+// elements in place and needs none). flow.go therefore keeps it.
 //
 // docs/performance.md's SortBy tables hold the measured figures. Regenerate
 // them with this benchmark rather than hand-updating numbers here.
@@ -456,9 +455,8 @@ func BenchmarkSortByStrategies(b *testing.B) {
 		pads func(Flow[padded], func(padded) string) Flow[padded]
 	}{
 		// SortBy is wrapped rather than passed as a method expression:
-		// Flow[int].SortBy leaves the method's own K uninstantiated, which
-		// the gc compiler rejects with an internal error rather than a
-		// diagnostic (go1.27rc2).
+		// Flow[int].SortBy leaves the method's own K uninstantiated, which the
+		// gc compiler rejects with an internal error rather than a diagnostic.
 		{
 			"permutation",
 			func(f Flow[int], key func(int) int) Flow[int] { return f.SortBy(key) },

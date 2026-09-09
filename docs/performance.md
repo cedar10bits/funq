@@ -88,9 +88,11 @@ Two of those are worth knowing the cost of directly:
   pipeline.
 - **`SortBy`** always sorts a permutation of indices rather than handing
   `key` to the comparator: it calls `key` exactly once per element up
-  front and builds two extra slices of length n on top of the output —
-  the keys and the permutation — rather than repeatedly evaluating `key`
-  and swapping whole elements during the sort.
+  front, into one extra slice of length n — the key/index pairs it then
+  sorts — rather than repeatedly evaluating `key` and swapping whole
+  elements during the sort. It hands back a lazy random-access Flow over
+  that permutation, so the sorted output slice is charged to the caller's
+  terminal op, exactly as it is for `SortFunc`.
 
 `SortBy`'s permutation-sort choice is backed by `BenchmarkSortByStrategies`,
 which measures it against the alternative it replaced: handing `key` straight
@@ -100,45 +102,45 @@ to the comparator instead of sorting an index permutation. At n=1,000,000:
 
 | Shape                 | permutation | comparator | comparator/permutation |
 | --------------------- | ----------- | ---------- | ---------------------- |
-| int, key=identity     | ~276 ms/op  | ~277 ms/op | ~1.0x                  |
-| 64B elem, key=field   | ~581 ms/op  | ~852 ms/op | ~1.5x                  |
-| 64B elem, key=tolower | ~585 ms/op  | ~2.45 s/op | ~4.2x                  |
+| int, key=identity     | ~256 ms/op  | ~280 ms/op | ~1.1x                  |
+| 64B elem, key=field   | ~511 ms/op  | ~892 ms/op | ~1.7x                  |
+| 64B elem, key=tolower | ~533 ms/op  | ~2.36 s/op | ~4.4x                  |
 
 **Memory**
 
 | Shape                 | permutation              | comparator               | permutation/comparator |
 | --------------------- | ------------------------ | ------------------------ | ---------------------- |
-| int, key=identity     | ~40.0 MB/op, 11 allocs   | ~16.0 MB/op, 8 allocs    | ~2.5x                  |
-| 64B elem, key=field   | ~216 MB/op, 11 allocs    | ~128 MB/op, 8 allocs     | ~1.7x                  |
-| 64B elem, key=tolower | ~232 MB/op, 1.00M allocs | ~937 MB/op, 50.6M allocs | ~0.25x                 |
+| int, key=identity     | ~32.0 MB/op, 9 allocs    | ~16.0 MB/op, 8 allocs    | ~2.0x                  |
+| 64B elem, key=field   | ~152 MB/op, 9 allocs     | ~128 MB/op, 8 allocs     | ~1.2x                  |
+| 64B elem, key=tolower | ~168 MB/op, 1.00M allocs | ~937 MB/op, 50.6M allocs | ~0.18x                 |
 
 The identity/int shape is the one that costs permutation something: the two
-strategies draw even in time (~1.0x) there, and permutation pays for that
-draw with about 2.5x the memory. That's not just the two extra slices
-described above — those alone would be 2.0x. The third is `SortBy`'s own
-output slice: the comparator formulation doesn't need one, because
-`SortFunc` sorts in place and returns the same slice it was given. Once
-either axis — element size or key cost — moves, permutation wins outright.
-With a 64-byte element it's ~1.5x faster. With a non-trivial key over
-that same element (`strings.ToLower`) it's ~4.2x faster while using a
-quarter of the memory, because `key` runs once per element instead of ~50
-times — visible in the allocation counts (1.00M vs 50.6M allocs/op).
+strategies land close in time there, and permutation pays for that with
+about 2.0x the memory — the one key/index slice it builds that the
+comparator formulation never needs. (Before `SortBy` returned its result
+lazily it also allocated an output slice of its own, pushing this to ~2.5x;
+that slice is now the caller's, the same cost the comparator path already
+carried.) Once either axis — element size or key cost — moves, permutation
+wins outright. With a 64-byte element it's ~1.7x faster for ~1.2x the
+memory. With a non-trivial key over that same element (`strings.ToLower`)
+it's ~4.4x faster while using under a fifth of the memory, because `key`
+runs once per element instead of ~50 times — visible in the allocation
+counts (1.00M vs 50.6M allocs/op).
 
-That identity/int draw is specific to n=1,000,000; permutation is still
-measurably ahead of comparator there at smaller n, same as in the other two
-shapes:
+Permutation's time edge on identity/int stays slim at every scale — inside
+the noise band the 6-sample n=1,000,000 run carries (see below) — while the
+other two shapes hold a clear, scale-independent margin:
 
 | n         | int, key=identity | 64B elem, key=field | 64B elem, key=tolower |
 | --------- | ----------------- | ------------------- | --------------------- |
-| 100       | ~1.2x             | ~1.7x               | ~4.7x                 |
-| 10,000    | ~1.0x             | ~1.6x               | ~4.7x                 |
-| 1,000,000 | ~1.0x             | ~1.5x               | ~4.2x                 |
+| 100       | ~1.3x             | ~1.7x               | ~5.1x                 |
+| 10,000    | ~1.05x            | ~1.6x               | ~4.7x                 |
+| 1,000,000 | ~1.1x             | ~1.7x               | ~4.4x                 |
 
-(comparator/permutation time ratio; >1x means permutation is faster). Only
-identity/int converges to a draw, by n=10,000; the other two shapes' edge
-doesn't depend on scale, only on key cost and element size. Permutation's
-memory cost for identity/int holds close to that ~2.5x across n too (~2.3x at
-n=100, ~2.5x at n=10,000).
+(comparator/permutation time ratio; >1x means permutation is faster.) The
+other two shapes' edge doesn't depend on scale, only on key cost and element
+size. Permutation's memory cost for identity/int holds close to that ~2.0x
+across n too (~1.9x at n=100, ~2.0x at n=10,000).
 
 See `Flow.Take` and `Flow.SortBy` in `flow.go` for why each implementation
 was chosen over the alternative it replaced.
@@ -262,7 +264,7 @@ each stage because the rollback may need it after the stage returns.
 > iteration count is only 1-3 samples — too few to tell the two strategies
 > apart. Two default-`-benchtime` runs on this machine put the identity/int
 > time ratio anywhere from 0.8x to 1.24x before six iterations settled it near
-> the ~1.0x reported above. The n=100 and n=10,000 rows in that same table
+> the ~1.1x reported above. The n=100 and n=10,000 rows in that same table
 > came from the separate default-`-benchtime` command above instead, where the
 > iteration count is already in the hundreds to hundreds of thousands and
 > stable without forcing it.

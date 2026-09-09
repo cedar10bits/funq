@@ -731,9 +731,9 @@ func (f Flow[T]) SortFunc(cmp func(a, b T) int) Flow[T] {
 // SortBy sorts the elements in ascending order of the key extracted by key.
 // The sort is stable, as in [Flow.SortFunc].
 //
-// key is called exactly once per element. It costs three slices of len n
-// that [Flow.SortFunc] does not: the keys, a permutation of indices, and a
-// fresh output slice.
+// key is called exactly once per element. It costs one slice of len n that
+// [Flow.SortFunc] does not: the key/index pairs it sorts in place of the
+// elements. The sorted output slice is the caller's, as it is for SortFunc.
 //
 // Keys order through [cmp.Compare], so a NaN key sorts before every non-NaN
 // key — the same order [Flow.MinBy] and [Flow.MaxBy] use.
@@ -744,23 +744,22 @@ func (f Flow[T]) SortBy[K cmp.Ordered](key func(T) K) Flow[T] {
 	// key to the comparator, in every shape measured but one: with an identity
 	// key over ints the two draw even on time, and the permutation costs more
 	// memory. The margin grows with the cost of key and the size of the
-	// element. See docs/performance.md and
-	// BenchmarkSortByStrategies.
+	// element. See docs/performance.md and BenchmarkSortByStrategies.
 	s := f.Slice()
-	keys := make([]K, len(s))
-	idx := make([]int, len(s))
+	size := len(s)
+	pairs := make([]Pair[K, int], size)
 	for i, v := range s {
-		keys[i] = key(v)
-		idx[i] = i
+		pairs[i] = Pair[K, int]{key(v), i}
 	}
-	// idx starts in ascending order, so a stable sort leaves equal keys in
-	// their original relative order.
-	slices.SortStableFunc(idx, func(a, b int) int { return cmp.Compare(keys[a], keys[b]) })
-	out := make([]T, len(s))
-	for i, j := range idx {
-		out[i] = s[j]
+	slices.SortStableFunc(pairs, func(a, b Pair[K, int]) int {
+		return cmp.Compare(a.First, b.First)
+	})
+	return Flow[T]{
+		at:   func(i int) (T, bool) { return s[pairs[i].Second], true },
+		head: 0,
+		tail: size,
+		size: size,
 	}
-	return fromSlice(out)
 }
 
 // Concat returns a Flow that yields the elements of f followed by the
