@@ -528,6 +528,7 @@ func TestDrop(t *testing.T) {
 	eq(t, []int{}, FromFn(3, Identity).Drop(5))
 	eq(t, []int{7, 6, 5, 4, 3, 2, 1, 0}, FromFn(10, Identity).Reverse().Drop(2))
 	eq(t, []int{6, 8}, FromFn(10, Identity).Filter(even).Drop(3))
+	eq(t, []int{4, 2, 0}, FromFn(10, Identity).Filter(even).Reverse().Drop(2))
 	eq(t, []int{2, 3}, From(0, 1, 2, 3).asSeq().Drop(2))
 }
 
@@ -590,6 +591,7 @@ func TestDropWhile(t *testing.T) {
 	t.Parallel()
 	eq(t, []int{5, 6, 7, 8, 9}, FromFn(10, Identity).DropWhile(LessThan(5)))
 	eq(t, []int{}, FromFn(10, Identity).DropWhile(LessThan(10)))
+	eq(t, []int{2, 0}, FromFn(10, Identity).Filter(even).Reverse().DropWhile(GreaterThan(3)))
 	eq(t, []int{2, 3}, From(0, 1, 2, 3).asSeq().DropWhile(LessThan(2)))
 }
 
@@ -597,6 +599,7 @@ func TestTakeWhile(t *testing.T) {
 	t.Parallel()
 	eq(t, []int{0, 1, 2, 3, 4}, FromFn(10, Identity).TakeWhile(LessThan(5)))
 	eq(t, []int{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}, FromFn(10, Identity).TakeWhile(LessThan(10)))
+	eq(t, []int{8, 6, 4}, FromFn(10, Identity).Filter(even).Reverse().TakeWhile(GreaterThan(3)))
 	eq(t, []int{0, 1}, From(0, 1, 2, 3).asSeq().TakeWhile(LessThan(2)))
 }
 

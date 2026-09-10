@@ -274,7 +274,8 @@ func (f Flow[T]) walk(yield func(T) bool) bool {
 // pull returns a stateful cursor over the live elements of an indexed Flow,
 // in iteration order. Each call returns the physical index the next live
 // element was found at, the element itself, and true; or false once
-// exhausted. It is the shared traversal primitive behind each and Zip.
+// exhausted. It is the shared traversal primitive behind Zip and Take's
+// scanning case.
 //
 // pull must only be called when f.at != nil.
 func (f Flow[T]) pull() func() (int, T, bool) {
@@ -302,25 +303,25 @@ func (f Flow[T]) pull() func() (int, T, bool) {
 //
 // each must only be called when f.at != nil.
 func (f Flow[T]) each(fn func(idx int, v T) bool) (boundary int, completed bool) {
-	dir := forward
+	dir, i, tail := forward, f.head, f.tail
 	if f.head > f.tail {
-		dir = backward
+		dir, i, tail = backward, f.head-1, f.tail-1
 	}
-	next := f.pull()
 	logical := 0
-	for {
-		phys, v, ok := next()
+	for ; i != tail; i += dir {
+		v, ok := f.at(i)
 		if !ok {
-			return f.tail, true
+			continue
 		}
 		if !fn(logical, v) {
 			if dir == forward {
-				return phys, false
+				return i, false
 			}
-			return phys + 1, false
+			return i + 1, false
 		}
 		logical++
 	}
+	return f.tail, true
 }
 
 // To applies fn to the Flow itself and returns fn's result. It is postfix

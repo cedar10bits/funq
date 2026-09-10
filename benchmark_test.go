@@ -363,6 +363,37 @@ func BenchmarkTakeShortCircuit(b *testing.B) {
 	}
 }
 
+// BenchmarkScanWhileCost isolates the cost of the eager scan Flow.DropWhile
+// and Flow.TakeWhile run on an indexed Flow: the predicate is one comparison
+// and the result is only re-bounded (From's known count lets Count skip
+// traversal), so each's physical-index walk is the whole signal.
+// BenchmarkTakeDropStrategies holds its boundary to a short prefix, so a
+// walk regression surfaces only here, at scan=n-1.
+//
+// Result (Apple M2, n=1,000,000): scan=20 is ~82 ns/op, too short to read
+// the per-element term; scan=999,999 is ~2.55 ms/op for both methods.
+func BenchmarkScanWhileCost(b *testing.B) {
+	const n = 1_000_000
+	ints := make([]int, n)
+	for i := range ints {
+		ints[i] = i
+	}
+	for _, scan := range []int{20, n - 1} {
+		b.Run(fmt.Sprintf("scan=%d", scan), func(b *testing.B) {
+			b.Run("DropWhile", func(b *testing.B) {
+				for b.Loop() {
+					_ = From(ints...).DropWhile(LessThan(scan)).Count()
+				}
+			})
+			b.Run("TakeWhile", func(b *testing.B) {
+				for b.Loop() {
+					_ = From(ints...).TakeWhile(LessThan(scan)).Count()
+				}
+			})
+		})
+	}
+}
+
 // BenchmarkFilterRepresentation compares three ways to apply several
 // predicates:
 //
