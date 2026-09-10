@@ -677,6 +677,10 @@ func runAllBenchmarks(n int, b *testing.B) {
 			name: "Concat",
 			api:  func(_ int, f Flow[int]) { _ = f.Concat(concatOther).All(True) },
 		},
+		{
+			name: "Accumulate",
+			api:  func(_ int, f Flow[int]) { _ = f.Accumulate(0, add).All(True) },
+		},
 	}
 
 	for _, bc := range cases {
