@@ -387,12 +387,13 @@ func (f Flow[T]) MapIndexed[U any](fn func(int, T) U) Flow[U] {
 	src := f
 	scan := func(yield func(U) bool) {
 		i := 0
-		for v := range src.Seq() {
+		src.walk(func(v T) bool {
 			if !yield(fn(i, v)) {
-				return
+				return false
 			}
 			i++
-		}
+			return true
+		})
 	}
 	if f.size == sizeUnknown {
 		return fromSeq(scan)
@@ -430,12 +431,10 @@ func (f Flow[T]) Accumulate[U any](init U, fn func(U, T) U) Flow[U] {
 		if !yield(acc) {
 			return
 		}
-		for v := range src.Seq() {
+		src.walk(func(v T) bool {
 			acc = fn(acc, v)
-			if !yield(acc) {
-				return
-			}
-		}
+			return yield(acc)
+		})
 	}
 	if f.size == sizeUnknown {
 		return fromSeq(scan)
@@ -499,16 +498,14 @@ func (f Flow[T]) DistinctBy[K comparable](key func(T) K) Flow[T] {
 	hint := f.sizeHint()
 	return fromSeq(func(yield func(T) bool) {
 		seen := make(map[K]struct{}, hint)
-		for v := range f.Seq() {
+		f.walk(func(v T) bool {
 			k := key(v)
 			if _, ok := seen[k]; ok {
-				continue
+				return true
 			}
 			seen[k] = struct{}{}
-			if !yield(v) {
-				return
-			}
-		}
+			return yield(v)
+		})
 	})
 }
 
@@ -952,10 +949,12 @@ func (f Flow[T]) IsEmpty() bool {
 	if f.size != sizeUnknown {
 		return f.size == 0
 	}
-	for range f.Seq() {
+	empty := true
+	f.walk(func(T) bool {
+		empty = false
 		return false
-	}
-	return true
+	})
+	return empty
 }
 
 // Any reports whether any element satisfies pred.
@@ -993,10 +992,12 @@ func (f Flow[T]) Find(pred func(T) bool) Optional[T] {
 
 // First returns the first element, wrapped in Optional.
 func (f Flow[T]) First() Optional[T] {
-	for v := range f.Seq() {
-		return Some(v)
-	}
-	return None[T]()
+	first := None[T]()
+	f.walk(func(v T) bool {
+		first = Some(v)
+		return false
+	})
+	return first
 }
 
 // Last returns the last element, wrapped in Optional.
@@ -1008,9 +1009,10 @@ func (f Flow[T]) Last() Optional[T] {
 		return f.Reverse().First()
 	}
 	last := None[T]()
-	for v := range f.Seq() {
+	f.walk(func(v T) bool {
 		last = Some(v)
-	}
+		return true
+	})
 	return last
 }
 
@@ -1150,12 +1152,10 @@ func Zip[T, U any](a Flow[T], b Flow[U]) Flow[Pair[T, U]] {
 		// which side drives does not change the result.
 		if b.at == nil && a.at != nil {
 			pull := a.pull()
-			for u := range b.Seq() {
+			b.walk(func(u U) bool {
 				_, v, ok := pull()
-				if !ok || !yield(Pair[T, U]{v, u}) {
-					return
-				}
-			}
+				return ok && yield(Pair[T, U]{v, u})
+			})
 			return
 		}
 		var next func() (U, bool)
@@ -1167,15 +1167,13 @@ func Zip[T, U any](a Flow[T], b Flow[U]) Flow[Pair[T, U]] {
 			next, stop = iter.Pull(b.Seq())
 			defer stop()
 		}
-		for v := range a.Seq() {
+		a.walk(func(v T) bool {
 			u, ok := next()
 			if !ok {
-				return
+				return false
 			}
-			if !yield(Pair[T, U]{v, u}) {
-				return
-			}
-		}
+			return yield(Pair[T, U]{v, u})
+		})
 	}
 	if a.size == sizeUnknown || b.size == sizeUnknown {
 		return fromSeq(seq)

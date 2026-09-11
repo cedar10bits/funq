@@ -921,6 +921,9 @@ func TestZip(t *testing.T) {
 	// general path: both sides sequential, so neither takes the a.at != nil
 	// && b.at == nil shortcut.
 	assertEqual(t, Some(Pair[int, int]{1, 10}), Zip(From(1, 2).asSeq(), From(10, 20, 30).asSeq()).First())
+	// Same, on the swapped-driver shortcut: indexed a pulled, sequential b
+	// drives, First stops it after the first pair.
+	assertEqual(t, Some(Pair[int, int]{1, 10}), Zip(From(1, 2, 3), From(10, 20, 30).asSeq()).First())
 
 	// Two known input counts give a known pair count: the smaller one.
 	assertEqual(t, 2, Zip(From(1, 2), From("a", "b", "c")).size)
