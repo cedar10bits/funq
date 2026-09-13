@@ -9,6 +9,8 @@ called out here.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-13
+
 ### Added
 
 - `Flow.Accumulate`: the running counterpart of `Fold`, yielding the seed and
@@ -17,6 +19,12 @@ called out here.
 - `Track.OnBreak`: registers a per-stage rollback compensation, run LIFO on a
   later stage's failure or panic. See the README or `Track.Play`'s
   documentation for the contract.
+
+### Changed
+
+- Reduced allocations across several `Flow` operations, including `SortBy`,
+  `FlatMap`, `Map`, `MapIndexed`, `Zip`, and `Chunk`. See
+  [docs/performance.md](docs/performance.md) for figures.
 
 ### Fixed
 
@@ -46,5 +54,6 @@ rest on parameterized methods.
 For the complete API, see
 [pkg.go.dev](https://pkg.go.dev/github.com/cedar10bits/funq).
 
-[Unreleased]: https://github.com/cedar10bits/funq/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/cedar10bits/funq/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/cedar10bits/funq/releases/tag/v0.2.0
 [0.1.0]: https://github.com/cedar10bits/funq/releases/tag/v0.1.0
