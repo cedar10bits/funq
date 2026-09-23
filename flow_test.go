@@ -800,6 +800,15 @@ func TestPartition(t *testing.T) {
 	eq(t, []int{0, 2, 4}, matched)
 	eq(t, []int{1, 3, 5}, rest)
 
+	// Mostly dropped by Filter: both sides are packed out of the over-sized
+	// buffer and still land in order.
+	matched, rest = FromFn(100, Identity).Filter(func(i int) bool { return i < 6 }).Partition(even)
+	eq(t, []int{0, 2, 4}, matched)
+	eq(t, []int{1, 3, 5}, rest)
+	matched, rest = FromFn(100, Identity).Filter(func(i int) bool { return i < 6 }).Reverse().Partition(even)
+	eq(t, []int{4, 2, 0}, matched)
+	eq(t, []int{5, 3, 1}, rest)
+
 	// one side empty
 	matched, rest = FromFn(4, Identity).Partition(True)
 	eq(t, []int{0, 1, 2, 3}, matched)
@@ -944,4 +953,19 @@ func TestZip(t *testing.T) {
 	assertEqual(t, 2, Zip(From(1, 2), From("a", "b", "c")).size)
 	assertEqual(t, 3, len(Zip(FromFn(3, Identity), FromFn(5, Identity)).Slice()))
 	assertEqual(t, sizeUnknown, Zip(From(1, 2), From(3, 4).asSeq()).size)
+}
+
+func TestClipSparse(t *testing.T) {
+	t.Parallel()
+	dense := make([]int, 3, 5)
+	isTrue(t, &clipSparse(dense)[0] == &dense[0], "at least half full: kept as is")
+
+	sparseBuf := make([]int, 2, 5)
+	sparseBuf[0], sparseBuf[1] = 7, 8
+	got := clipSparse(sparseBuf)
+	assertEqual(t, []int{7, 8}, got)
+	assertEqual(t, 2, cap(got))
+	isTrue(t, &got[0] != &sparseBuf[0], "more than half unused: copied out")
+
+	eq(t, []int{0, 99}, FromFn(100, Identity).Filter(func(i int) bool { return i%99 == 0 }).Cache())
 }

@@ -9,6 +9,11 @@ called out here.
 
 ## [Unreleased]
 
+### Changed
+
+- `Flow.Cache` and `Flow.Partition` no longer keep a buffer more than twice
+  the size of their elements after a `Filter` that dropped most of them.
+
 ### Fixed
 
 - `Chunk`: panicked when `n` far exceeded the Flow's length (e.g.

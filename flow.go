@@ -846,9 +846,26 @@ func concatIndexed[T any](all []Flow[T]) (Flow[T], bool) {
 //
 // Cache always copies every element into a fresh slice, even from an already
 // eager Flow, so on a pure pipeline with a single terminal operation it buys
-// nothing and adds an allocation.
+// nothing and adds an allocation. The slice it keeps is at most about twice
+// the size of its elements, even after a [Flow.Filter] that dropped most of
+// them.
 func (f Flow[T]) Cache() Flow[T] {
-	return fromSlice(f.Slice())
+	return fromSlice(clipSparse(f.Slice()))
+}
+
+// clipSparse returns s, or a tight copy of it when sparse, for a result held
+// long-term: Slice sizes a filtered Flow to its physical range width.
+func clipSparse[T any](s []T) []T {
+	if !sparse(len(s), cap(s)) {
+		return s
+	}
+	return slices.Clone(s)
+}
+
+// sparse reports whether a buffer of capacity c holding live elements is more
+// than half unused, and so worth copying out of before it is held long-term.
+func sparse(live, c int) bool {
+	return live < c-live
 }
 
 // asSeq normalizes f to the sequential representation: a no-op if f is
@@ -1094,7 +1111,8 @@ func (f Flow[T]) ToMap[K comparable](key func(T) K) map[K]T {
 
 // Partition splits the elements into those satisfying pred and those that do
 // not, preserving relative order within each side. Both results are
-// materialized (see [Flow]), so the upstream pipeline runs exactly once.
+// materialized (see [Flow]), so the upstream pipeline runs exactly once, and
+// hold at most about twice the memory their elements need (see [Flow.Cache]).
 func (f Flow[T]) Partition(pred func(T) bool) (matched, rest Flow[T]) {
 	n := f.sizeHint()
 	if n == 0 {
@@ -1122,7 +1140,12 @@ func (f Flow[T]) Partition(pred func(T) bool) (matched, rest Flow[T]) {
 			buf[tail] = v
 		}
 	}
-	return fromSlice(buf[:head]), fromSlice(buf[tail:]).Reverse()
+	yes, no := buf[:head], buf[tail:]
+	if sparse(len(yes)+len(no), n) {
+		packed := slices.Concat(yes, no)
+		yes, no = packed[:head], packed[head:]
+	}
+	return fromSlice(yes), fromSlice(no).Reverse()
 }
 
 // Pair holds two values of possibly different types, e.g. the result of Zip.
