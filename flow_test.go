@@ -899,6 +899,21 @@ func TestChunk(t *testing.T) {
 	assertEqual(t, 0, Chunk[int](3)(From[int]()).size)
 	assertEqual(t, 3, len(Chunk[int](2)(FromFn(5, Identity)).Slice()))
 	assertEqual(t, sizeUnknown, Chunk[int](2)(From(1, 2, 3).asSeq()).size)
+
+	// n far beyond the Flow: the preallocation follows the Flow, not n, and
+	// the chunk count does not overflow.
+	huge := Chunk[int](math.MaxInt)
+	eq(t, [][]int{{1, 2, 3}}, huge(From(1, 2, 3)))
+	eq(t, [][]int{{1, 2, 3}}, huge(From(1, 2, 3).asSeq()))
+	eq(t, [][]int{{0, 2}}, huge(FromFn(4, Identity).Filter(even)))
+	assertEqual(t, 1, huge(From(1, 2, 3)).Count())
+	assertEqual(t, 3, cap(huge(From(1, 2, 3)).First().MustGet()))
+	assertEqual(t, 1, huge(FromFn(math.MaxInt, Identity)).Count())
+
+	// Chunks after the first are full-sized once n elements have been seen.
+	for _, c := range Chunk[int](100)(FromFn(250, Identity).asSeq()).Slice()[1:] {
+		assertEqual(t, 100, cap(c))
+	}
 }
 
 func TestZip(t *testing.T) {

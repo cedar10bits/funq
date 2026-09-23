@@ -1221,7 +1221,13 @@ func Chunk[T any](n int) func(Flow[T]) Flow[[]T] {
 	}
 	return func(f Flow[T]) Flow[[]T] {
 		seq := func(yield func([]T) bool) {
-			chunk := make([]T, 0, n)
+			// n may far exceed the Flow (Chunk(math.MaxInt)), so size the first chunk
+			// from the Flow; a filled chunk proves n elements exist, so later ones use n.
+			capacity := min(n, chunkCapUnknown)
+			if hint := f.sizeHint(); hint > 0 {
+				capacity = min(n, hint)
+			}
+			chunk := make([]T, 0, capacity)
 			for v := range f.Seq() {
 				chunk = append(chunk, v)
 				if len(chunk) == n {
@@ -1235,11 +1241,18 @@ func Chunk[T any](n int) func(Flow[T]) Flow[[]T] {
 				yield(chunk)
 			}
 		}
-		if f.size == sizeUnknown {
+		switch f.size {
+		case sizeUnknown:
 			return fromSeq(seq)
+		case 0:
+			return empty[[]T]()
 		}
-		// Not fromSeq: every element lands in one chunk and the final short
-		// chunk still counts, so ceil(count / n) is exact.
-		return Flow[[]T]{seq: seq, size: (f.size + n - 1) / n}
+		// Not fromSeq: ceil(count / n) is exact, written this way so that it
+		// cannot overflow for n near math.MaxInt.
+		return Flow[[]T]{seq: seq, size: (f.size-1)/n + 1}
 	}
 }
+
+// chunkCapUnknown caps the first chunk's preallocation when the Flow gives no
+// size bound; append grows it from there.
+const chunkCapUnknown = 1024

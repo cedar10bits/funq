@@ -9,6 +9,11 @@ called out here.
 
 ## [Unreleased]
 
+### Fixed
+
+- `Chunk`: panicked when `n` far exceeded the Flow's length (e.g.
+  `Chunk(math.MaxInt)`); the first chunk is now sized from the Flow.
+
 ## [0.2.0] - 2026-09-13
 
 ### Added
