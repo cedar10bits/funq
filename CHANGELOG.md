@@ -13,6 +13,8 @@ called out here.
 
 - `Flow.Cache` and `Flow.Partition` no longer keep a buffer more than twice
   the size of their elements after a `Filter` that dropped most of them.
+- `And` and `Or` copy their predicate slice, so changing it afterward no
+  longer changes the predicate.
 
 ### Fixed
 

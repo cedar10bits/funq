@@ -25,6 +25,11 @@ func TestAnd(t *testing.T) {
 	isTrue(t, And(GreaterThan(0), even)(2))
 	isFalse(t, And(GreaterThan(0), even)(0))
 	isFalse(t, And(GreaterThan(0), even)(-2))
+
+	preds := []Fp[int, bool]{True[int]}
+	and := And(preds...)
+	preds[0] = False[int]
+	isTrue(t, and(0), "mutating the argument slice afterward must not affect And")
 }
 
 func TestOr(t *testing.T) {
@@ -32,6 +37,11 @@ func TestOr(t *testing.T) {
 	isTrue(t, Or(GreaterThan(0), even)(1))
 	isTrue(t, Or(GreaterThan(0), even)(-2))
 	isFalse(t, Or(GreaterThan(0), even)(-1))
+
+	preds := []Fp[int, bool]{False[int]}
+	or := Or(preds...)
+	preds[0] = True[int]
+	isFalse(t, or(0), "mutating the argument slice afterward must not affect Or")
 }
 
 func TestXor(t *testing.T) {

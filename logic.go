@@ -1,5 +1,7 @@
 package funq
 
+import "slices"
+
 // True is a predicate that always reports true.
 func True[T any](T) bool { return true }
 
@@ -13,7 +15,9 @@ func Not[T any](pred Fp[T, bool]) Fp[T, bool] {
 
 // And returns a predicate that is true only when every preds is true.
 // It short-circuits on the first false. It returns true when preds is empty.
+// It copies preds, so changing the slice afterward does not affect it.
 func And[T any](preds ...Fp[T, bool]) Fp[T, bool] {
+	preds = slices.Clone(preds)
 	return func(t T) bool {
 		for _, f := range preds {
 			if !f(t) {
@@ -26,7 +30,9 @@ func And[T any](preds ...Fp[T, bool]) Fp[T, bool] {
 
 // Or returns a predicate that is true when any preds is true.
 // It short-circuits on the first true. It returns false when preds is empty.
+// It copies preds, so changing the slice afterward does not affect it.
 func Or[T any](preds ...Fp[T, bool]) Fp[T, bool] {
+	preds = slices.Clone(preds)
 	return func(t T) bool {
 		for _, f := range preds {
 			if f(t) {
