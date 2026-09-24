@@ -237,8 +237,8 @@ func TestTrackFailurePosition(t *testing.T) {
 			assertEqual(t, wantMsg, err.Error())
 
 			ge := mustGrooveError(t, err)
-			assertEqual(t, tc.failAt, ge.stage)
-			assertEqual(t, tc.stages, ge.of)
+			assertEqual(t, tc.failAt, ge.Stage)
+			assertEqual(t, tc.stages, ge.Of)
 		})
 	}
 }
@@ -247,19 +247,19 @@ func TestGrooveError(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		name       string
-		err        *grooveError
+		err        *GrooveError
 		wantMsg    string
 		wantUnwrap error
 	}{
 		{
 			name:       "SingleStagePipeline",
-			err:        &grooveError{stage: 1, of: 1, err: errors.New("underlying error")},
+			err:        &GrooveError{Stage: 1, Of: 1, Err: errors.New("underlying error")},
 			wantMsg:    `funq: Groove pipeline failed at stage 1 of 1: underlying error`,
 			wantUnwrap: errors.New("underlying error"),
 		},
 		{
 			name:       "MidPipeline",
-			err:        &grooveError{stage: 3, of: 5, err: errors.New("deep error")},
+			err:        &GrooveError{Stage: 3, Of: 5, Err: errors.New("deep error")},
 			wantMsg:    `funq: Groove pipeline failed at stage 3 of 5: deep error`,
 			wantUnwrap: errors.New("deep error"),
 		},
@@ -272,6 +272,44 @@ func TestGrooveError(t *testing.T) {
 			assertEqual(t, tc.wantUnwrap, tc.err.Unwrap())
 		})
 	}
+}
+
+// TestGrooveErrorAsType covers errors.AsType[*GrooveError] on a real Play
+// error: a single-stage failure and a nested Track, where each level keeps
+// its own frame (see [GrooveError]).
+func TestGrooveErrorAsType(t *testing.T) {
+	t.Parallel()
+
+	t.Run("SingleTrack", func(t *testing.T) {
+		t.Parallel()
+		track := buildTrack(3, 2)
+		_, err := track.Play("a")
+		mustErr(t, err)
+
+		ge := mustGrooveError(t, err)
+		assertEqual(t, 2, ge.Stage)
+		assertEqual(t, 3, ge.Of)
+	})
+
+	t.Run("NestedTrack", func(t *testing.T) {
+		t.Parallel()
+		sentinel := errors.New("inner boom")
+		inner := Groove(strconv.Atoi).Jam(func(int) (int, error) { return 0, sentinel })
+		outer := Groove(NilError(Identity[string])).
+			Jam(inner.Play).
+			Jam(NilError(strconv.Itoa))
+
+		_, err := outer.Play("21")
+		mustErr(t, err)
+
+		outerGE := mustGrooveError(t, err)
+		assertEqual(t, 2, outerGE.Stage)
+		assertEqual(t, 3, outerGE.Of)
+
+		innerGE := mustGrooveError(t, outerGE.Err)
+		assertEqual(t, 2, innerGE.Stage)
+		assertEqual(t, 2, innerGE.Of)
+	})
 }
 
 // TestTrackErrorPropagation pins that errors.Is reaches through a Track's
@@ -321,13 +359,13 @@ func TestTrackNestedPipeline(t *testing.T) {
 	assertEqual(t, wantMsg, err.Error())
 }
 
-// mustGrooveError returns the *grooveError err carries, failing the test if
+// mustGrooveError returns the *GrooveError err carries, failing the test if
 // it carries none.
-func mustGrooveError(t *testing.T, err error) *grooveError {
+func mustGrooveError(t *testing.T, err error) *GrooveError {
 	t.Helper()
-	ge, ok := errors.AsType[*grooveError](err)
+	ge, ok := errors.AsType[*GrooveError](err)
 	if !ok {
-		t.Fatalf("want errors.AsType[*grooveError](%v) to succeed, got false", err)
+		t.Fatalf("want errors.AsType[*GrooveError](%v) to succeed, got false", err)
 	}
 	return ge
 }
@@ -362,8 +400,8 @@ func TestTrackOnBreak(t *testing.T) {
 		assertEqual(t, []string{"a!"}, undone)
 		assertEqual(t, "funq: Groove pipeline failed at stage 2 of 2: boom", err.Error())
 		ge := mustGrooveError(t, err)
-		assertEqual(t, 2, ge.stage)
-		assertEqual(t, 2, ge.of)
+		assertEqual(t, 2, ge.Stage)
+		assertEqual(t, 2, ge.Of)
 	})
 
 	t.Run("LIFOOrder", func(t *testing.T) {
@@ -413,8 +451,8 @@ func TestTrackOnBreak(t *testing.T) {
 		mustErr(t, err)
 		assertEqual(t, "funq: Groove pipeline failed at stage 3 of 3: boom", err.Error())
 		ge := mustGrooveError(t, err)
-		assertEqual(t, 3, ge.stage)
-		assertEqual(t, 3, ge.of)
+		assertEqual(t, 3, ge.Stage)
+		assertEqual(t, 3, ge.Of)
 	})
 
 	t.Run("CompensationErrorJoined", func(t *testing.T) {
@@ -429,8 +467,8 @@ func TestTrackOnBreak(t *testing.T) {
 			t.Errorf("want errors.Is(%v, %v), got false", err, errSentinel)
 		}
 		ge := mustGrooveError(t, err)
-		assertEqual(t, 2, ge.stage)
-		assertEqual(t, 2, ge.of)
+		assertEqual(t, 2, ge.Stage)
+		assertEqual(t, 2, ge.Of)
 		want := "funq: Groove pipeline failed at stage 2 of 2: boom\n" +
 			"funq: rollback for stage 1 failed: sentinel"
 		assertEqual(t, want, err.Error())
@@ -865,8 +903,8 @@ func TestErrOnNone(t *testing.T) {
 			t.Errorf("want errors.Is(%v, %v), got false", err, errSentinel)
 		}
 		ge := mustGrooveError(t, err)
-		assertEqual(t, 1, ge.stage)
-		assertEqual(t, 2, ge.of)
+		assertEqual(t, 1, ge.Stage)
+		assertEqual(t, 2, ge.Of)
 	})
 }
 

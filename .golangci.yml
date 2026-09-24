@@ -5,7 +5,7 @@ version: "2"
 linters:
   default: standard # errcheck, govet, ineffassign, staticcheck, unused
   enable:
-    - errorlint    # correct error wrapping / comparison (funq has grooveError + Unwrap)
+    - errorlint    # correct error wrapping / comparison (funq has GrooveError + Unwrap)
     - misspell     # typos in comments and strings
     - nolintlint   # keep //nolint directives honest and specific
     - predeclared  # shadowing predeclared identifiers

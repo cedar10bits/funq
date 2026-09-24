@@ -318,6 +318,18 @@ func ExampleTrack_OnBreak() {
 	// tx(7) committed <nil>
 }
 
+func ExampleGrooveError() {
+	track := funq.Groove(strconv.Atoi).
+		Jam(func(int) (int, error) { return 0, errors.New("division failed") })
+
+	_, err := track.Play("21")
+
+	if grooveErr, ok := errors.AsType[*funq.GrooveError](err); ok {
+		fmt.Printf("stage %d of %d failed\n", grooveErr.Stage, grooveErr.Of)
+	}
+	// Output: stage 2 of 2 failed
+}
+
 func ExampleErrOnNone() {
 	// A lookup reports absence as None, not as an error.
 	users := map[int]string{1: "ada"}

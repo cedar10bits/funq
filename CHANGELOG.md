@@ -9,6 +9,12 @@ called out here.
 
 ## [Unreleased]
 
+### Added
+
+- `GrooveError`: the exported error type `Track.Play` returns on failure, with
+  `Stage` and `Of` fields naming the failing stage and the pipeline's total
+  stage count, so `errors.AsType[*GrooveError](err)` can branch on it.
+
 ### Changed
 
 - `Flow.Cache` and `Flow.Partition` no longer keep a buffer more than twice

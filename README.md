@@ -143,6 +143,9 @@ the pipeline's length:
 funq: Groove pipeline failed at stage 3 of 5: <underlying error>
 ```
 
+That error is a `*funq.GrooveError`, retrievable via
+`errors.AsType[*funq.GrooveError](err)` to branch on which stage failed.
+
 ## Predicates
 
 Build logic for `Flow.Filter` and validation:

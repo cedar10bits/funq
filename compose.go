@@ -142,7 +142,7 @@ func Groove[T0, T1 any](f Fe[T0, T1]) Track[T0, T1] {
 			t1, err := f(t0)
 			if err != nil {
 				var zero T1
-				return zero, &grooveError{stage: 1, of: st.of, err: err}
+				return zero, &GrooveError{Stage: 1, Of: st.of, Err: err}
 			}
 			return t1, nil
 		},
@@ -164,7 +164,7 @@ func (t Track[T0, T1]) Jam[T2 any](g Fe[T1, T2]) Track[T0, T2] {
 			}
 			t2, err := g(t1)
 			if err != nil {
-				return zero, &grooveError{stage: n, of: st.of, err: err}
+				return zero, &GrooveError{Stage: n, Of: st.of, Err: err}
 			}
 			return t2, nil
 		},
@@ -203,7 +203,7 @@ func (t Track[T0, T1]) OnBreak(compensate func(T1) error) Track[T0, T1] {
 }
 
 // Play executes the track from t0 through every stage in order. If a stage
-// returns an error, Play stops there and returns an error naming the
+// returns an error, Play stops there and returns a [*GrooveError] naming the
 // failing stage and the track's total stage count, for example
 // "funq: Groove pipeline failed at stage 3 of 5: <underlying error>".
 //
@@ -284,29 +284,35 @@ func compensation(stage int, run func() error) (err error) {
 	return nil
 }
 
-// grooveError reports which stage of a Track pipeline failed.
-type grooveError struct {
-	stage, of int
-	err       error
+// GrooveError reports which stage of a Track pipeline failed: Stage is the
+// 1-based position of the failing stage, and Of is the track's total stage
+// count. A Track nested as another track's stage (see [Track.Play]) keeps
+// its own GrooveError frame — Of reflects the inner track's stage count, not
+// the outer one's. errors.AsType[*GrooveError] on a Play error returns the
+// outermost frame; unwrap its Err (or apply errors.AsType again) to step
+// into each inner track's own frame in turn.
+type GrooveError struct {
+	Stage, Of int
+	Err       error
 }
 
 var (
-	_ error                       = (*grooveError)(nil)
-	_ interface{ Unwrap() error } = (*grooveError)(nil)
+	_ error                       = (*GrooveError)(nil)
+	_ interface{ Unwrap() error } = (*GrooveError)(nil)
 )
 
-// errPrefix leads every [grooveError] message, naming the package first so
+// errPrefix leads every [GrooveError] message, naming the package first so
 // the message is greppable back to funq.
 const errPrefix = "funq: Groove pipeline failed"
 
-func (e *grooveError) Error() string {
-	return fmt.Sprintf("%s at stage %d of %d: %v", errPrefix, e.stage, e.of, e.err)
+func (e *GrooveError) Error() string {
+	return fmt.Sprintf("%s at stage %d of %d: %v", errPrefix, e.Stage, e.Of, e.Err)
 }
 
 // Unwrap exposes the immediate cause, per the standard library's error-chain
 // contract: errors.Is/errors.AsType call it repeatedly, so unwrapping more
-// than one layer here would hide intermediate grooveError frames from that
+// than one layer here would hide intermediate GrooveError frames from that
 // traversal.
-func (e *grooveError) Unwrap() error {
-	return e.err
+func (e *GrooveError) Unwrap() error {
+	return e.Err
 }
