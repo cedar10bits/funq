@@ -191,7 +191,8 @@ func (o Optional[T]) String() string {
 	return fmt.Sprintf("Some(%v)", o.v)
 }
 
-// MarshalJSON encodes Some as its value and None as JSON null.
+// MarshalJSON encodes Some as its value, None as null. A Some(nil pointer,
+// slice, map, or json.RawMessage) is JSON null too, so it reads back as None.
 func (o Optional[T]) MarshalJSON() ([]byte, error) {
 	if !o.ok {
 		return []byte("null"), nil

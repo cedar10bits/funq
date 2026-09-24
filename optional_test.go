@@ -197,6 +197,50 @@ func TestOptionalMarshalJSON(t *testing.T) {
 	assertEqual(t, "null", string(b))
 }
 
+// TestOptionalMarshalJSONNilInnerValue pins that Some(v) whose v itself
+// encodes as null marshals to null, same as None, for the value kinds
+// documented on MarshalJSON.
+func TestOptionalMarshalJSONNilInnerValue(t *testing.T) {
+	t.Parallel()
+
+	var p *int
+	b, err := json.Marshal(Some(p))
+	mustNoErr(t, err)
+	assertEqual(t, "null", string(b))
+
+	var s []int
+	b, err = json.Marshal(Some(s))
+	mustNoErr(t, err)
+	assertEqual(t, "null", string(b))
+
+	var m map[string]int
+	b, err = json.Marshal(Some(m))
+	mustNoErr(t, err)
+	assertEqual(t, "null", string(b))
+
+	var raw json.RawMessage
+	b, err = json.Marshal(Some(raw))
+	mustNoErr(t, err)
+	assertEqual(t, "null", string(b))
+
+	// Decoding that null back yields None, not Some(nil), for each type above.
+	var opPtr Optional[*int]
+	mustNoErr(t, json.Unmarshal([]byte("null"), &opPtr))
+	assertEqual(t, None[*int](), opPtr)
+
+	var opSlice Optional[[]int]
+	mustNoErr(t, json.Unmarshal([]byte("null"), &opSlice))
+	assertEqual(t, None[[]int](), opSlice)
+
+	var opMap Optional[map[string]int]
+	mustNoErr(t, json.Unmarshal([]byte("null"), &opMap))
+	assertEqual(t, None[map[string]int](), opMap)
+
+	var opRaw Optional[json.RawMessage]
+	mustNoErr(t, json.Unmarshal([]byte("null"), &opRaw))
+	assertEqual(t, None[json.RawMessage](), opRaw)
+}
+
 func TestOptionalUnmarshalJSON(t *testing.T) {
 	t.Parallel()
 	var some Optional[int]
