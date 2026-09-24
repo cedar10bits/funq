@@ -21,6 +21,9 @@ called out here.
   the size of their elements after a `Filter` that dropped most of them.
 - `And` and `Or` copy their predicate slice, so changing it afterward no
   longer changes the predicate.
+- `PanicOnError`'s panic message now starts with `funq: `, matching every
+  other funq error/panic (was `PanicOnError: ...`, now
+  `funq: PanicOnError: ...`).
 
 ### Fixed
 

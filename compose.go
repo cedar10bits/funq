@@ -43,7 +43,7 @@ func PanicOnError[T, U any](f Fe[T, U]) Fp[T, U] {
 	return func(x T) U {
 		u, err := f(x)
 		if err != nil {
-			panic(fmt.Errorf("PanicOnError: %w", err))
+			panic(fmt.Errorf("funq: PanicOnError: %w", err))
 		}
 		return u
 	}

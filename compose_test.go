@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"runtime"
 	"strconv"
+	"strings"
 	"sync"
 	"testing"
 )
@@ -945,6 +946,30 @@ func TestPanicError(t *testing.T) {
 				err, ok := r.(error)
 				if !ok {
 					t.Fatalf("panic value must be an error, got %#v", r)
+				}
+				if !errors.Is(err, sentinel) {
+					t.Errorf("want errors.Is(%v, %v), got false", err, sentinel)
+				}
+			}()
+			wrapped("anything")
+		}()
+	})
+
+	// TestPanicError/MessagePrefix pins that PanicOnError's message matches
+	// every other funq error/panic's "funq: " prefix.
+	t.Run("MessagePrefix", func(t *testing.T) {
+		t.Parallel()
+		sentinel := errors.New("sentinel error")
+		wrapped := PanicOnError(func(string) (int, error) { return 0, sentinel })
+
+		func() {
+			defer func() {
+				err, ok := recover().(error)
+				if !ok {
+					t.Fatalf("panic value must be an error")
+				}
+				if !strings.HasPrefix(err.Error(), "funq: PanicOnError: ") {
+					t.Errorf(`want error to start with "funq: PanicOnError: ", got %q`, err.Error())
 				}
 				if !errors.Is(err, sentinel) {
 					t.Errorf("want errors.Is(%v, %v), got false", err, sentinel)
