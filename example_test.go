@@ -100,6 +100,19 @@ func ExampleFlow_SortBy() {
 	// Output: [a bb ccc]
 }
 
+func ExampleFlow_SortByDesc() {
+	type player struct {
+		name  string
+		score int
+	}
+	ranking := funq.From(player{"ann", 70}, player{"bob", 90}, player{"cy", 70}).
+		SortByDesc(func(p player) int { return p.score }).
+		Slice()
+
+	fmt.Println(ranking)
+	// Output: [{bob 90} {ann 70} {cy 70}]
+}
+
 func ExampleDistinct() {
 	// Distinct keeps the first occurrence of each value.
 	uniq := funq.Distinct(funq.From(1, 2, 2, 3, 1)).Slice()

@@ -40,9 +40,9 @@ Eager vs lazy is a property of how a Flow is constructed, not a separate type:
 Intermediate operations (`Map`, `Filter`, ...) are lazy. Terminal operations
 (`Slice`, `Reduce`, `Count`, ...) drive the computation.
 
-> `Cache`, `SortFunc`, and `SortBy` always materialize the Flow immediately:
-> the upstream pipeline runs once, there, and later terminal calls reuse the
-> result instead of re-running it.
+> `Cache`, `SortFunc`, `SortBy`, and `SortByDesc` always materialize the Flow
+> immediately: the upstream pipeline runs once, there, and later terminal
+> calls reuse the result instead of re-running it.
 >
 > Construction cost:
 >
@@ -86,13 +86,13 @@ Two of those are worth knowing the cost of directly:
   the end only when fewer than n survive. Because that scan's result is
   materialized, later terminal calls reuse it instead of re-running the
   pipeline.
-- **`SortBy`** always sorts a permutation of indices rather than handing
-  `key` to the comparator: it calls `key` exactly once per element up
-  front, into one extra slice of length n — the key/index pairs it then
-  sorts — rather than repeatedly evaluating `key` and swapping whole
-  elements during the sort. It hands back a lazy random-access Flow over
-  that permutation, so the sorted output slice is charged to the caller's
-  terminal op, exactly as it is for `SortFunc`.
+- **`SortBy`** (and `SortByDesc`) always sorts a permutation of indices
+  rather than handing `key` to the comparator: it calls `key` exactly once
+  per element up front, into one extra slice of length n — the key/index
+  pairs it then sorts — rather than repeatedly evaluating `key` and
+  swapping whole elements during the sort. It hands back a lazy
+  random-access Flow over that permutation, so the sorted output slice is
+  charged to the caller's terminal op, exactly as it is for `SortFunc`.
 
 `SortBy`'s permutation-sort choice is backed by `BenchmarkSortByStrategies`,
 which measures it against the alternative it replaced: handing `key` straight

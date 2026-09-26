@@ -1,6 +1,7 @@
 package funq
 
 import (
+	"cmp"
 	"fmt"
 	"math"
 	"math/rand/v2"
@@ -665,18 +666,51 @@ func TestSortBy(t *testing.T) {
 	assertEqual(t, []kv{{0, "b"}, {0, "d"}, {1, "a"}, {1, "c"}}, got)
 }
 
+func TestSortByDesc(t *testing.T) {
+	t.Parallel()
+	eq(t, []int{}, From[int]().SortByDesc(Identity))
+	eq(t, []int{5, 3, 2, 1}, From(3, 1, 5, 2).SortByDesc(Identity))
+	eq(t, []int{-3, 2, -1}, From(2, -3, -1).SortByDesc(abs))
+	eq(t, []int{5, 3, 2, 1}, From(3, 1, 5, 2).asSeq().SortByDesc(Identity))
+	eq(t, []string{"b", "a"}, From("a", "b").SortByDesc(Identity[string]))
+	src := From(kv{1, "a"}, kv{0, "b"}, kv{1, "c"}, kv{0, "d"})
+	k := func(x kv) int { return x.k }
+	// stable: equal keys keep relative order, unlike SortBy(key).Reverse()
+	assertEqual(t, []kv{{1, "a"}, {1, "c"}, {0, "b"}, {0, "d"}}, src.SortByDesc(k).Slice())
+	assertEqual(t, []kv{{1, "c"}, {1, "a"}, {0, "d"}, {0, "b"}}, src.SortBy(k).Reverse().Slice())
+}
+
+// TestSortByDescNaN pins the doc comment's NaN placement: last, the mirror of
+// SortBy placing it first.
+func TestSortByDescNaN(t *testing.T) {
+	t.Parallel()
+	nan := math.NaN()
+	got := From(1, nan, 2).SortByDesc(Identity).Slice()
+	assertEqual(t, []float64{2, 1}, got[:2])
+	isTrue(t, math.IsNaN(got[2]), fmt.Sprintf("last: %v", got[2]))
+}
+
 // TestSortByCallsKeyOncePerElement pins the guarantee in SortBy's doc comment.
 // Passing key to a comparator instead would call it O(n log n) times.
 func TestSortByCallsKeyOncePerElement(t *testing.T) {
 	t.Parallel()
-	for _, n := range []int{0, 1, 2, 100, 1000} {
-		src := make([]int, n)
-		for i := range src {
-			src[i] = n - i
+	sorts := []struct {
+		name string
+		sort func(Flow[int], func(int) int) Flow[int]
+	}{
+		{"SortBy", func(f Flow[int], key func(int) int) Flow[int] { return f.SortBy(key) }},
+		{"SortByDesc", func(f Flow[int], key func(int) int) Flow[int] { return f.SortByDesc(key) }},
+	}
+	for _, s := range sorts {
+		for _, n := range []int{0, 1, 2, 100, 1000} {
+			src := make([]int, n)
+			for i := range src {
+				src[i] = n - i
+			}
+			calls := 0
+			s.sort(From(src...), func(v int) int { calls++; return v }).Slice()
+			assertEqual(t, n, calls, fmt.Sprintf("%s n=%d", s.name, n))
 		}
-		calls := 0
-		From(src...).SortBy(func(v int) int { calls++; return v }).Slice()
-		assertEqual(t, n, calls, fmt.Sprintf("n=%d", n))
 	}
 }
 
@@ -695,6 +729,8 @@ func TestSortByMatchesComparatorSort(t *testing.T) {
 		}
 		want := sortByComparator(From(xs...), key).Slice()
 		assertEqual(t, want, From(xs...).SortBy(key).Slice(), fmt.Sprintf("trial %d: %v", trial, xs))
+		wantDesc := From(xs...).SortFunc(func(a, b kv) int { return cmp.Compare(b.k, a.k) }).Slice()
+		assertEqual(t, wantDesc, From(xs...).SortByDesc(key).Slice(), fmt.Sprintf("desc trial %d: %v", trial, xs))
 	}
 }
 
