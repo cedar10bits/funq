@@ -1265,24 +1265,35 @@ func Chunk[T any](n int) func(Flow[T]) Flow[[]T] {
 	}
 	return func(f Flow[T]) Flow[[]T] {
 		seq := func(yield func([]T) bool) {
-			// n may far exceed the Flow (Chunk(math.MaxInt)), so size the first chunk
-			// from the Flow; a filled chunk proves n elements exist, so later ones use n.
+			// Cap each chunk at what the size hint leaves, since n may far exceed the Flow
+			// (Chunk(math.MaxInt)); with no hint, a filled chunk proves n elements exist.
+			hint := f.sizeHint()
 			capacity := min(n, chunkCapUnknown)
-			if hint := f.sizeHint(); hint > 0 {
+			if hint > 0 {
 				capacity = min(n, hint)
 			}
-			chunk := make([]T, 0, capacity)
+			// One struct, not two variables: the range body moves each mutated capture
+			// to the heap, one allocation apiece.
+			st := struct {
+				chunk []T
+				left  int // elements the hint still allows
+			}{make([]T, 0, capacity), hint}
 			for v := range f.Seq() {
-				chunk = append(chunk, v)
-				if len(chunk) == n {
-					if !yield(chunk) {
+				st.chunk = append(st.chunk, v)
+				if len(st.chunk) == n {
+					if !yield(st.chunk) {
 						return
 					}
-					chunk = make([]T, 0, n)
+					next := n
+					if hint > 0 {
+						st.left -= n
+						next = min(n, st.left)
+					}
+					st.chunk = make([]T, 0, next)
 				}
 			}
-			if len(chunk) > 0 {
-				yield(chunk)
+			if len(st.chunk) > 0 {
+				yield(st.chunk)
 			}
 		}
 		switch f.size {

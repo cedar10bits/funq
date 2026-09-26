@@ -23,6 +23,8 @@ called out here.
 
 - `Flow.Cache` and `Flow.Partition` no longer keep a buffer more than twice
   the size of their elements after a `Filter` that dropped most of them.
+- `Chunk` sizes every chunk, not just the first, by what the Flow's size
+  bound leaves, so a short final chunk no longer holds room for `n` elements.
 - `And` and `Or` copy their predicate slice, so changing it afterward no
   longer changes the predicate.
 - `PanicOnError`'s panic message now starts with `funq: `, matching every

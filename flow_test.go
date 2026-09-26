@@ -955,10 +955,23 @@ func TestChunk(t *testing.T) {
 	assertEqual(t, 3, cap(huge(From(1, 2, 3)).First().MustGet()))
 	assertEqual(t, 1, huge(FromFn(math.MaxInt, Identity)).Count())
 
-	// Chunks after the first are full-sized once n elements have been seen.
+	// Without a size hint, chunks after the first are full-sized once n
+	// elements have been seen.
 	for _, c := range Chunk[int](100)(FromFn(250, Identity).asSeq()).Slice()[1:] {
 		assertEqual(t, 100, cap(c))
 	}
+
+	// With one, the final chunk is capped at what the hint leaves.
+	capsOf := func(f Flow[int]) []int {
+		var caps []int
+		for _, c := range Chunk[int](100)(f).Slice() {
+			caps = append(caps, cap(c))
+		}
+		return caps
+	}
+	assertEqual(t, []int{100, 100, 50}, capsOf(FromFn(250, Identity)))
+	assertEqual(t, []int{100, 100, 50}, capsOf(FromFn(250, Identity).Filter(True)))
+	assertEqual(t, []int{100, 100}, capsOf(FromFn(200, Identity)))
 }
 
 func TestZip(t *testing.T) {
