@@ -121,14 +121,22 @@ func ExampleDistinct() {
 	// Output: [1 2 3]
 }
 
-func ExampleFlow_GroupBy() {
-	groups := funq.From(1, 2, 3, 4, 5, 6).GroupBy(func(v int) int { return v % 2 })
+func ExampleGroupBy() {
+	words := funq.From("go", "flow", "map", "zip", "seq", "iter")
+	byLen := funq.GroupBy(func(w string) int { return len(w) })
 
-	fmt.Println(groups[0])
-	fmt.Println(groups[1])
+	// Largest group first; groups of equal size keep first-appearance order.
+	words.To(byLen).
+		SortByDesc(func(g funq.Pair[int, []string]) int { return len(g.Second) }).
+		ForEach(func(g funq.Pair[int, []string]) { fmt.Println(g.First, g.Second) })
+
+	// MapOf turns the groups into a map for lookup by key.
+	fmt.Println(words.To(byLen).To(funq.MapOf)[4])
 	// Output:
-	// [2 4 6]
-	// [1 3 5]
+	// 3 [map zip seq]
+	// 4 [flow iter]
+	// 2 [go]
+	// [flow iter]
 }
 
 func ExampleFlow_Concat() {

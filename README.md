@@ -174,7 +174,7 @@ What that index will not tell you:
   so name it: `Const[int]("x")` is a `func(int) string`
 - `Flow.To(fn)` applies a `func(Flow[T]) U` to the Flow itself, keeping the
   free functions in a fluent chain: `f.To(funq.Chunk[int](2))`,
-  `f.To(funq.Distinct)`
+  `f.To(funq.Distinct)`, `f.To(funq.GroupBy(key)).To(funq.MapOf)`
 - There is no `Min`/`Max`/`Contains` method on `Flow` — a parameterized
   method cannot constrain the receiver's `T` (see the `Distinct` doc comment).
   Membership is the free function `funq.Contains(f, v)`. Element-wise min/max

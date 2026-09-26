@@ -663,7 +663,7 @@ func runAllBenchmarks(n int, b *testing.B) {
 		},
 		{
 			name: "GroupBy",
-			api:  func(_ int, f Flow[int]) { _ = f.GroupBy(func(v int) int { return v & 15 }) },
+			api:  func(_ int, f Flow[int]) { _ = f.To(GroupBy(func(v int) int { return v & 15 })) },
 		},
 		{
 			name: "ToMap",

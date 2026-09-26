@@ -39,7 +39,7 @@ import (
 //
 // Under these rules evaluation timing is unobservable, and the implementation
 // exploits that: some intermediate operations evaluate part of the pipeline
-// when they are called. [Flow.Cache] and the sort methods always do;
+// when they are called. [Flow.Cache], the sort methods and [GroupBy] always do;
 // [Flow.Take], [Flow.Drop], [Flow.TakeWhile], [Flow.DropWhile] and
 // [Flow.Reverse] do depending on how the Flow was built, and each method's
 // doc states when. Materialize, in those docs, means what Cache does: the
@@ -1104,17 +1104,6 @@ func (f Flow[T]) MaxBy[K cmp.Ordered](key func(T) K) Optional[T] {
 // standard library keeps unexported.
 func isNaN[K cmp.Ordered](k K) bool { return k != k }
 
-// GroupBy groups elements by the key extracted by key. Each group preserves
-// the relative order in which its elements appeared in the Flow.
-func (f Flow[T]) GroupBy[K comparable](key func(T) K) map[K][]T {
-	out := make(map[K][]T)
-	for v := range f.Seq() {
-		k := key(v)
-		out[k] = append(out[k], v)
-	}
-	return out
-}
-
 // ToMap collects the elements into a map keyed by key. When two elements map
 // to the same key, the first occurrence wins, consistent with
 // [Flow.DistinctBy].
@@ -1246,6 +1235,55 @@ func Distinct[T comparable](f Flow[T]) Flow[T] {
 // is looser than equality.
 func Contains[T comparable](f Flow[T], v T) bool {
 	return f.Any(Equal(v))
+}
+
+// GroupBy returns a function that groups a Flow's elements by the key
+// extracted by key, yielding one (key, group) pair per distinct key in the
+// order each key first appears. Each group keeps the relative order its
+// elements had in the Flow. key is called exactly once per element.
+//
+// Grouping needs every element up front, so the returned function
+// materializes the Flow when applied (see [Flow]).
+//
+// GroupBy cannot be a Flow method, for the same reason as [Zip]. The curried
+// form plugs into [Flow.To] as [Chunk] does, and [MapOf] turns the result into
+// a map for lookup by key:
+//
+//	f.To(GroupBy(key)).To(MapOf)  // map[K][]T
+func GroupBy[T any, K comparable](key func(T) K) func(Flow[T]) Flow[Pair[K, []T]] {
+	return func(f Flow[T]) Flow[Pair[K, []T]] {
+		index := make(map[K]int)
+		var groups []Pair[K, []T]
+		for v := range f.Seq() {
+			k := key(v)
+			i, ok := index[k]
+			if !ok {
+				i = len(groups)
+				index[k] = i
+				groups = append(groups, Pair[K, []T]{First: k})
+			}
+			groups[i].Second = append(groups[i].Second, v)
+		}
+		return fromSlice(groups)
+	}
+}
+
+// MapOf collects a Flow of pairs into a map from each pair's First to its
+// Second. When two pairs share a key, the first occurrence wins, consistent
+// with [Flow.ToMap].
+//
+// MapOf cannot be a method: it requires the element type to be a Pair with a
+// comparable First, which a method cannot constrain (see [Distinct]). In a
+// chain, [Flow.To] applies it postfix: f.To(MapOf).
+func MapOf[K comparable, V any](f Flow[Pair[K, V]]) map[K]V {
+	out := make(map[K]V, f.sizeHint())
+	for p := range f.Seq() {
+		if _, ok := out[p.First]; ok {
+			continue
+		}
+		out[p.First] = p.Second
+	}
+	return out
 }
 
 // Chunk returns a function that groups a Flow's consecutive elements into

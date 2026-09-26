@@ -18,6 +18,11 @@ called out here.
   calling the key once per element, which `SortBy(key).Reverse()` (equal keys
   come out reversed) and a reversed `SortFunc` (key called per comparison) are
   not.
+- `GroupBy`: a free function yielding `(key, group)` pairs in the order each
+  key first appears, so grouping continues in a chain:
+  `f.To(GroupBy(key))`.
+- `MapOf`: collects a Flow of `Pair`s — such as `GroupBy`'s or `Zip`'s output
+  — into a map, first occurrence winning as in `ToMap`.
 
 ### Changed
 
@@ -30,6 +35,12 @@ called out here.
 - `PanicOnError`'s panic message now starts with `funq: `, matching every
   other funq error/panic (was `PanicOnError: ...`, now
   `funq: PanicOnError: ...`).
+
+### Removed
+
+- **Breaking:** the `Flow.GroupBy` method, which returned a map that could not
+  continue a chain; the `GroupBy` function replaces it. `f.GroupBy(key)`
+  becomes `f.To(GroupBy(key)).To(MapOf)`.
 
 ### Fixed
 

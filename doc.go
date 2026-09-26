@@ -16,10 +16,11 @@
 //     short-circuits on the first error (railway-oriented programming), and
 //     [Track.OnBreak] registers a rollback to run when it does.
 //
-// A few operations — [Chunk], [Contains], [Distinct], and [Zip] — are free
-// functions rather than Flow methods because their signatures cannot be
-// expressed as methods. See each function's documentation for why. Those
-// that reduce to a func(Flow[T]) U — [Distinct] as it stands, [Chunk] once
-// given its size — drop back into a chain through [Flow.To]:
-// f.To(Distinct), f.To(Chunk[int](2)).
+// A few operations — [Chunk], [Contains], [Distinct], [GroupBy], [MapOf], and
+// [Zip] — are free functions rather than Flow methods because their
+// signatures cannot be expressed as methods. See each function's
+// documentation for why. Those that reduce to a func(Flow[T]) U — [Distinct]
+// and [MapOf] as they stand, [Chunk] once given its size, [GroupBy] once given
+// its key — drop back into a chain through [Flow.To]: f.To(Distinct),
+// f.To(Chunk[int](2)), f.To(GroupBy(key)).To(MapOf).
 package funq

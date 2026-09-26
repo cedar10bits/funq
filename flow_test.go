@@ -754,9 +754,31 @@ func TestDistinctBy(t *testing.T) {
 
 func TestGroupBy(t *testing.T) {
 	t.Parallel()
-	assertEqual(t, map[int][]int{}, From[int]().GroupBy(Identity))
-	got := From(1, 2, 3, 4, 5, 6).GroupBy(func(n int) int { return n % 2 })
-	assertEqual(t, map[int][]int{0: {2, 4, 6}, 1: {1, 3, 5}}, got)
+	type group = Pair[int, []int]
+	mod3 := func(n int) int { return n % 3 }
+	eq(t, []group{}, From[int]().To(GroupBy(mod3)))
+	// Groups come in first-appearance order of their keys, each in input order.
+	eq(t, []group{{2, []int{2, 5}}, {1, []int{1, 4}}, {0, []int{3, 6}}},
+		From(2, 1, 3, 5, 4, 6).To(GroupBy(mod3)))
+	eq(t, []group{{0, []int{0}}, {2, []int{2}}, {1, []int{4}}}, FromFn(6, Identity).Filter(even).To(GroupBy(mod3)))
+
+	calls := 0
+	grouped := FromFn(6, Identity).To(GroupBy(func(n int) int { calls++; return n % 2 }))
+	assertEqual(t, 6, calls, "key must run once per element, at application")
+	assertEqual(t, 2, grouped.Count())
+	grouped.Reverse().Slice()
+	assertEqual(t, 6, calls, "the result must be materialized, not re-run")
+}
+
+func TestMapOf(t *testing.T) {
+	t.Parallel()
+	assertEqual(t, map[int]string{}, MapOf(From[Pair[int, string]]()))
+	// The first occurrence of a key wins, as in ToMap.
+	assertEqual(t, map[int]string{1: "a", 2: "b"},
+		From(Pair[int, string]{1, "a"}, Pair[int, string]{2, "b"}, Pair[int, string]{1, "c"}).To(MapOf))
+	assertEqual(t, map[int][]int{0: {2, 4, 6}, 1: {1, 3, 5}},
+		From(1, 2, 3, 4, 5, 6).To(GroupBy(func(n int) int { return n % 2 })).To(MapOf))
+	assertEqual(t, map[int]string{1: "x"}, Zip(From(1, 1), From("x", "y")).To(MapOf))
 }
 
 func TestConcat(t *testing.T) {
