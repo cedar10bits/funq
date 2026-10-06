@@ -752,6 +752,32 @@ func TestDistinctBy(t *testing.T) {
 	eq(t, []int{-3, 1}, From(-3, 1, 2, 3, -1, -2).DistinctBy(abs).Take(2))
 }
 
+func TestDistinctByLazyAndRepeatable(t *testing.T) {
+	t.Parallel()
+	values := []int{1, 1, 2, 3}
+	generated, keyed := 0, 0
+	f := FromFn(len(values), func(i int) int {
+		generated++
+		return values[i]
+	}).DistinctBy(func(v int) int {
+		keyed++
+		return v
+	})
+
+	assertEqual(t, 0, generated)
+	assertEqual(t, 0, keyed)
+	assertEqual(t, Some(1), f.First())
+	assertEqual(t, 1, generated)
+	assertEqual(t, 1, keyed)
+	assertEqual(t, []int{1, 2}, f.Take(2).Slice())
+	assertEqual(t, 4, generated)
+	assertEqual(t, 4, keyed)
+	assertEqual(t, []int{1, 2, 3}, f.Slice())
+	assertEqual(t, []int{1, 2, 3}, f.Slice())
+	assertEqual(t, 12, generated)
+	assertEqual(t, 12, keyed)
+}
+
 func TestGroupBy(t *testing.T) {
 	t.Parallel()
 	type group = Pair[int, []int]

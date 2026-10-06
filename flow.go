@@ -495,9 +495,8 @@ func (f Flow[T]) Filter(pred func(T) bool) Flow[T] {
 // be a method (see [Distinct] for why the T-is-the-key form cannot).
 // Distinct(f) is equivalent to f.DistinctBy(Identity).
 func (f Flow[T]) DistinctBy[K comparable](key func(T) K) Flow[T] {
-	hint := f.sizeHint()
 	return fromSeq(func(yield func(T) bool) {
-		seen := make(map[K]struct{}, hint)
+		seen := make(map[K]struct{})
 		f.walk(func(v T) bool {
 			k := key(v)
 			if _, ok := seen[k]; ok {

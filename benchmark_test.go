@@ -154,6 +154,58 @@ func BenchmarkEarlyExit(b *testing.B) {
 	})
 }
 
+func BenchmarkDistinctBy(b *testing.B) {
+	for _, n := range []int{1_000, 100_000} {
+		unique := make([]int, n)
+		duplicates := make([]int, n)
+		for i := range unique {
+			unique[i] = i
+			duplicates[i] = i % 16
+		}
+
+		b.Run(fmt.Sprintf("n=%d/First", n), func(b *testing.B) {
+			b.ReportAllocs()
+			var got int
+			for b.Loop() {
+				got = From(unique...).DistinctBy(Identity).First().OrElse(-1)
+			}
+			if got != 0 {
+				b.Fatalf("First() = %d, want 0", got)
+			}
+		})
+		b.Run(fmt.Sprintf("n=%d/Take10", n), func(b *testing.B) {
+			b.ReportAllocs()
+			var got int
+			for b.Loop() {
+				got = From(duplicates...).DistinctBy(Identity).Take(10).Count()
+			}
+			if got != 10 {
+				b.Fatalf("Take(10).Count() = %d, want 10", got)
+			}
+		})
+		b.Run(fmt.Sprintf("n=%d/FullDuplicates", n), func(b *testing.B) {
+			b.ReportAllocs()
+			var got int
+			for b.Loop() {
+				got = From(duplicates...).DistinctBy(Identity).Count()
+			}
+			if got != 16 {
+				b.Fatalf("Count() = %d, want 16", got)
+			}
+		})
+		b.Run(fmt.Sprintf("n=%d/FullUnique", n), func(b *testing.B) {
+			b.ReportAllocs()
+			var got int
+			for b.Loop() {
+				got = From(unique...).DistinctBy(Identity).Count()
+			}
+			if got != n {
+				b.Fatalf("Count() = %d, want %d", got, n)
+			}
+		})
+	}
+}
+
 // BenchmarkZip measures Zip across the four representation combinations
 // (idx_idx, idx_seq, seq_idx, seq_seq), backing the pulled-side preference
 // explained in Zip's own implementation comment in flow.go.
