@@ -870,11 +870,10 @@ func concatIndexed[T any](all []Flow[T]) (Flow[T], bool) {
 // the size of its elements, even after a [Flow.Filter] that dropped most of
 // them.
 func (f Flow[T]) Cache() Flow[T] {
-	return fromSlice(clipSparse(f.Slice()))
+	return fromSlice(f.Slice())
 }
 
-// clipSparse returns s, or a tight copy of it when sparse, for a result held
-// long-term: Slice sizes a filtered Flow to its physical range width.
+// clipSparse returns s or a clone if over half its capacity is unused.
 func clipSparse[T any](s []T) []T {
 	if !sparse(len(s), cap(s)) {
 		return s
@@ -959,14 +958,13 @@ func (f Flow[T]) Slice() []T {
 		return out
 	}
 	// For an indexed Flow of unknown size (e.g. after Filter), sizeHint is the
-	// physical range width: pre-allocate it to avoid append regrowth, trading
-	// possible over-allocation when the filter drops many elements. A
+	// physical range width: pre-allocate it to avoid append regrowth. A
 	// sequential Flow offers no such bound.
 	out := make([]T, 0, f.sizeHint())
 	for v := range f.Seq() {
 		out = append(out, v)
 	}
-	return out
+	return clipSparse(out)
 }
 
 // Count returns the number of elements in the Flow.

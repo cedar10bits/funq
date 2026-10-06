@@ -397,6 +397,34 @@ func TestSlice(t *testing.T) {
 	eq(t, []int{9, 8, 7, 6, 5, 4, 3, 2, 1, 0}, FromFn(10, Identity).Reverse())
 }
 
+func TestSliceFilteredCapacity(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name    string
+		keep    func(int) bool
+		wantLen int
+		wantCap int
+	}{
+		{"empty", func(int) bool { return false }, 0, 0},
+		{"sparse", func(v int) bool { return v < 10 }, 10, 10},
+		{"half", func(v int) bool { return v%2 == 0 }, 50, 100},
+		{"dense", func(int) bool { return true }, 100, 100},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			got := FromFn(100, Identity).Filter(tc.keep).Slice()
+			want := make([]int, 0, tc.wantLen)
+			for i := range 100 {
+				if tc.keep(i) {
+					want = append(want, i)
+				}
+			}
+			assertEqual(t, want, got)
+			assertEqual(t, tc.wantCap, cap(got))
+			isTrue(t, got != nil, "Slice returns a non-nil slice")
+		})
+	}
+}
+
 func TestCount(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
