@@ -62,15 +62,12 @@ Intermediate operations (`Map`, `Filter`, ...) are lazy. Terminal operations
 >   `sizeUnknown`, as before.
 >
 > Of those, only `Take` materializes: it keeps the elements its scan produced.
-> `Drop`, `DropWhile`, and `TakeWhile` keep just the boundary the scan found,
-> so the upstream pipeline (predicate included) runs again on every later
-> terminal call, unless the scan reached the end, which leaves `Drop` and
-> `DropWhile` empty and `TakeWhile` unchanged. `Drop` and `DropWhile`'s
-> construction scan covers only the discarded prefix, disjoint from what a
-> later terminal call traverses; `TakeWhile`'s construction scan instead
-> covers the same range a terminal call re-walks, so an expensive predicate or
-> upstream pipeline effectively runs one extra time up front (see
-> `Flow.TakeWhile`'s doc comment).
+> `Drop`, `DropWhile`, and `TakeWhile` keep just the boundary the scan found.
+> Later terminal calls may re-run upstream transformations over the retained
+> range. For indexed `TakeWhile`, its boundary predicate runs during
+> construction only; a terminal call does not invoke it again. `Drop` and
+> `DropWhile` scan a discarded prefix, while `TakeWhile` scans the retained
+> range that terminal calls may walk again (see `Flow.TakeWhile`'s doc comment).
 >
 > `Reverse` is O(1) on random-access Flows, but materializes forward-only
 > Flows (built directly by `FromSeq`, or produced by `Accumulate`, `FlatMap`,
@@ -79,13 +76,13 @@ Intermediate operations (`Map`, `Filter`, ...) are lazy. Terminal operations
 
 Two of those are worth knowing the cost of directly:
 
-- **`Take(n)`** is O(1) and stays lazy whenever the count is statically
-  known (see above), including right after a `TakeWhile`/`DropWhile` that
-  recovered one. In its scanning case — unknown count on a still
-  random-access Flow — it stops at the n-th surviving element, scanning to
-  the end only when fewer than n survive. Because that scan's result is
-  materialized, later terminal calls reuse it instead of re-running the
-  pipeline.
+- **`Take(n)`** is O(1) and stays lazy when the Flow is random-access and its
+  count is statically known (see above), including right after an indexed
+  `TakeWhile`/`DropWhile` that recovered one. In its scanning case — unknown
+  count on a still random-access Flow — it stops at the n-th surviving
+  element, scanning to the end only when fewer than n survive. Because that
+  scan's result is materialized, later terminal calls reuse it instead of
+  re-running the pipeline.
 - **`SortBy`** (and `SortByDesc`) always sorts a permutation of indices
   rather than handing `key` to the comparator: it calls `key` exactly once
   per element up front, into one extra slice of length n — the key/index

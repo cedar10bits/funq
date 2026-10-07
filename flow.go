@@ -672,10 +672,10 @@ func (f Flow[T]) DropWhile(pred func(T) bool) Flow[T] {
 // count and all.
 //
 // Unlike DropWhile, the range TakeWhile keeps is exactly the range its
-// construction scan already walked, not the disjoint remainder — so an
-// expensive pred or upstream pipeline runs once at construction and again in
-// full on every later terminal operation. [Flow.Cache] before the TakeWhile
-// collapses that to a single run, the same remedy as [Flow.Drop]'s.
+// construction scan already walked, not the disjoint remainder. On an indexed
+// Flow, pred runs only during construction, but upstream transformations may
+// run again on each later terminal operation. [Flow.Cache] before TakeWhile
+// avoids re-running those transformations.
 func (f Flow[T]) TakeWhile(pred func(T) bool) Flow[T] {
 	if f.at == nil {
 		if f.seq == nil {

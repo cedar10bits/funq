@@ -674,6 +674,20 @@ func TestTakeWhile(t *testing.T) {
 	eq(t, []int{0, 1}, From(0, 1, 2, 3).asSeq().TakeWhile(LessThan(2)))
 }
 
+func TestTakeWhileIndexedPredicateRunsAtConstruction(t *testing.T) {
+	t.Parallel()
+	transforms, predicates := 0, 0
+	got := FromFn(5, func(i int) int { transforms++; return i }).TakeWhile(func(v int) bool {
+		predicates++
+		return v < 3
+	})
+	assertEqual(t, 4, predicates)
+	assertEqual(t, 4, transforms)
+	assertEqual(t, []int{0, 1, 2}, got.Slice())
+	assertEqual(t, 4, predicates)
+	assertEqual(t, 7, transforms)
+}
+
 func TestReverse(t *testing.T) {
 	t.Parallel()
 	eq(t, []int{}, From[int]().Reverse())
