@@ -600,6 +600,10 @@ func (f Flow[T]) Take(n int) Flow[T] {
 		}
 		return Flow[T]{at: f.at, head: f.head, tail: f.head + step, size: n}
 	}
+	return fromSlice(takeIndexedUnknown(f, n))
+}
+
+func takeIndexedUnknown[T any](f Flow[T], n int) []T {
 	// Keeping what the scan produces, rather than a boundary the pipeline has
 	// to reproduce per terminal call, wins on both measured shapes: see
 	// BenchmarkTakeDropStrategies and BenchmarkTakeShortCircuit.
@@ -616,7 +620,7 @@ func (f Flow[T]) Take(n int) Flow[T] {
 		}
 		out = append(out, v)
 	}
-	return fromSlice(out)
+	return clipSparse(out)
 }
 
 // DropWhile skips leading elements while pred is true.

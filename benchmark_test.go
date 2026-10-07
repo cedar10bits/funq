@@ -417,7 +417,8 @@ func BenchmarkTakeDropStrategies(b *testing.B) {
 // since reaching the end is the only way to establish that no 20th element
 // exists. Both scan all n for ~5.7 ms on a single terminal, but three
 // terminals leave the eager version unchanged while the lazy one triples to
-// ~16.9 ms.
+// ~16.9 ms. take=n also measures a requested count far above the survivor
+// count, where the retained slice is sparse.
 func BenchmarkTakeShortCircuit(b *testing.B) {
 	const (
 		n         = 1_000_000
@@ -437,7 +438,7 @@ func BenchmarkTakeShortCircuit(b *testing.B) {
 			}
 		}
 	}
-	for _, take := range []int{survivors / 2, survivors, survivors * 2} {
+	for _, take := range []int{survivors / 2, survivors, survivors * 2, n} {
 		eager := func() Flow[int] { return src().Take(take) }
 		lazy := func() Flow[int] { return takeLazy(src(), take) }
 		b.Run(fmt.Sprintf("take=%d", take), func(b *testing.B) {
@@ -447,6 +448,56 @@ func BenchmarkTakeShortCircuit(b *testing.B) {
 			b.Run("lazy_terminal3x", consume(3, lazy))
 		})
 	}
+}
+
+var sliceBenchmarkResult []int
+
+func BenchmarkSliceCompaction(b *testing.B) {
+	const n = 65_536
+	for _, tc := range []struct {
+		name string
+		keep func(int) bool
+	}{
+		{"sparse", func(v int) bool { return v < 1_024 }},
+		{"half", func(v int) bool { return v%2 == 0 }},
+		{"dense", func(int) bool { return true }},
+	} {
+		f := FromFn(n, Identity).Filter(tc.keep)
+		b.Run(tc.name, func(b *testing.B) {
+			b.Run("without_compaction", func(b *testing.B) {
+				b.ReportAllocs()
+				for b.Loop() {
+					out := make([]int, 0, f.sizeHint())
+					for v := range f.Seq() {
+						out = append(out, v)
+					}
+					sliceBenchmarkResult = out
+				}
+			})
+			b.Run("with_compaction", func(b *testing.B) {
+				b.ReportAllocs()
+				for b.Loop() {
+					sliceBenchmarkResult = f.Slice()
+				}
+			})
+		})
+	}
+}
+
+func BenchmarkSliceCompactionCopy(b *testing.B) {
+	src := make([]int, 1_024, 65_536)
+	b.Run("without_compaction", func(b *testing.B) {
+		b.ReportAllocs()
+		for b.Loop() {
+			sliceBenchmarkResult = src
+		}
+	})
+	b.Run("with_compaction", func(b *testing.B) {
+		b.ReportAllocs()
+		for b.Loop() {
+			sliceBenchmarkResult = clipSparse(src)
+		}
+	})
 }
 
 // BenchmarkScanWhileCost isolates the cost of the eager scan Flow.DropWhile

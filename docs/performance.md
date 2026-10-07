@@ -94,6 +94,16 @@ Two of those are worth knowing the cost of directly:
   random-access Flow over that permutation, so the sorted output slice is
   charged to the caller's terminal op, exactly as it is for `SortFunc`.
 
+`Slice` and the scanning form of `Take` compact a result when fewer than half
+of its allocated slots hold elements. For 65,536 `int` input slots and 1,024
+survivors, that changes the retained backing array from 512 KiB to 8 KiB.
+In five repeated `BenchmarkSliceCompaction` samples, the compacted sparse
+`Slice` used about 532 KiB/op versus 524 KiB/op without compaction. A focused
+copy benchmark measured 1.25–1.33 µs and 8 KiB/op for that copy. `B/op` is
+cumulative allocation, not retained heap: the original array and its copy
+coexist during compaction, so this change can raise peak live allocation.
+The benchmark does not measure the process's peak heap.
+
 `SortBy`'s permutation-sort choice is backed by `BenchmarkSortByStrategies`,
 which measures it against the alternative it replaced: handing `key` straight
 to the comparator instead of sorting an index permutation. At n=1,000,000:
@@ -257,6 +267,8 @@ each stage because the rollback may need it after the stage returns.
 > go test -bench 'BenchmarkSortByStrategies/n=(100|10000)$' -benchmem -run '^$' .
 > go test -bench 'BenchmarkSortByStrategies/n=1000000$' -benchmem -benchtime=6x -run '^$' .
 > go test -bench '^BenchmarkTrackPlay' -benchmem -run '^$' .
+> go test -bench '^BenchmarkSliceCompaction$' -benchmem -count=5 -benchtime=100ms -run '^$' .
+> go test -bench '^BenchmarkSliceCompactionCopy$' -benchmem -count=5 -benchtime=200ms -run '^$' .
 > ```
 >
 > The `SortBy` table's n=1,000,000 rows need that `-benchtime=6x`: each

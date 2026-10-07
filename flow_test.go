@@ -573,6 +573,48 @@ func TestTake(t *testing.T) {
 	eq(t, []int{0, 2, 4}, FromFn(6, Identity).Filter(even).Take(math.MaxInt))
 }
 
+func TestTakeFilteredRetainedResults(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name        string
+		keep        func(int) bool
+		wantLen     int
+		wantCompact bool
+	}{
+		{"empty", func(int) bool { return false }, 0, true},
+		{"sparse", func(v int) bool { return v < 10 }, 10, true},
+		{"under_half", func(v int) bool { return v < 49 }, 49, true},
+		{"half", func(v int) bool { return v%2 == 0 }, 50, false},
+		{"dense", func(int) bool { return true }, 100, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := FromFn(100, Identity).Filter(tc.keep)
+			retained := takeIndexedUnknown(f, 1_000)
+			got := f.Take(1_000)
+			want := make([]int, 0, tc.wantLen)
+			for i := range 100 {
+				if tc.keep(i) {
+					want = append(want, i)
+				}
+			}
+			assertEqual(t, want, retained)
+			assertEqual(t, tc.wantCompact, cap(retained) < 100)
+			assertEqual(t, want, got.Slice())
+			assertEqual(t, tc.wantLen, got.Count())
+		})
+	}
+}
+
+func TestTakeFilteredEarlyExit(t *testing.T) {
+	t.Parallel()
+	calls := 0
+	got := FromFn(100, func(i int) int { calls++; return i }).Filter(even).Take(3)
+	assertEqual(t, []int{0, 2, 4}, got.Slice())
+	assertEqual(t, 5, calls)
+	assertEqual(t, []int{0, 2, 4}, got.Slice())
+	assertEqual(t, 5, calls)
+}
+
 // TestTakeShortCircuitsLazySource guards the README's headline lazy-evaluation
 // claim, which a boundary-scanning Take broke. Locating the boundary needed
 // the (k+1)-th surviving element, so a Filter matching exactly k elements
