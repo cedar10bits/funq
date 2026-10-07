@@ -206,6 +206,40 @@ func BenchmarkDistinctBy(b *testing.B) {
 	}
 }
 
+func BenchmarkMapCapacity(b *testing.B) {
+	for _, n := range []int{1_000, 100_000} {
+		for _, scenario := range []struct {
+			name string
+			keys int
+		}{
+			{"duplicates_16", 16},
+			{"one_percent", n / 100},
+			{"unique", n},
+		} {
+			values := make([]int, n)
+			pairs := make([]Pair[int, int], n)
+			for i := range values {
+				values[i] = i
+				pairs[i] = Pair[int, int]{First: i % scenario.keys, Second: i}
+			}
+			valueFlow := From(values...)
+			pairFlow := From(pairs...)
+			b.Run(fmt.Sprintf("n=%d/%s/ToMap", n, scenario.name), func(b *testing.B) {
+				b.ReportAllocs()
+				for b.Loop() {
+					valueFlow.ToMap(func(v int) int { return v % scenario.keys })
+				}
+			})
+			b.Run(fmt.Sprintf("n=%d/%s/MapOf", n, scenario.name), func(b *testing.B) {
+				b.ReportAllocs()
+				for b.Loop() {
+					MapOf(pairFlow)
+				}
+			})
+		}
+	}
+}
+
 // BenchmarkZip measures Zip across the four representation combinations
 // (idx_idx, idx_seq, seq_idx, seq_seq), backing the pulled-side preference
 // explained in Zip's own implementation comment in flow.go.

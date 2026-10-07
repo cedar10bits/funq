@@ -1105,7 +1105,7 @@ func isNaN[K cmp.Ordered](k K) bool { return k != k }
 // to the same key, the first occurrence wins, consistent with
 // [Flow.DistinctBy].
 func (f Flow[T]) ToMap[K comparable](key func(T) K) map[K]T {
-	out := make(map[K]T, f.sizeHint())
+	out := make(map[K]T)
 	for v := range f.Seq() {
 		k := key(v)
 		if _, ok := out[k]; ok {
@@ -1273,7 +1273,7 @@ func GroupBy[T any, K comparable](key func(T) K) func(Flow[T]) Flow[Pair[K, []T]
 // comparable First, which a method cannot constrain (see [Distinct]). In a
 // chain, [Flow.To] applies it postfix: f.To(MapOf).
 func MapOf[K comparable, V any](f Flow[Pair[K, V]]) map[K]V {
-	out := make(map[K]V, f.sizeHint())
+	out := make(map[K]V)
 	for p := range f.Seq() {
 		if _, ok := out[p.First]; ok {
 			continue
