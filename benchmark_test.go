@@ -500,6 +500,46 @@ func BenchmarkSliceCompactionCopy(b *testing.B) {
 	})
 }
 
+// BenchmarkTakeScanAllocation compares the preallocation strategies of
+// takeIndexedUnknown. B/op is cumulative allocation, so the benchmark says
+// nothing about peak heap.
+func BenchmarkTakeScanAllocation(b *testing.B) {
+	const n = 65_536
+	for _, tc := range []struct {
+		name string
+		keep func(int) bool
+	}{
+		{"sparse", func(v int) bool { return v < 1_024 }},
+		{"half", func(v int) bool { return v%2 == 0 }},
+		{"dense", func(int) bool { return true }},
+	} {
+		f := FromFn(n, Identity).Filter(tc.keep)
+		b.Run(tc.name, func(b *testing.B) {
+			b.Run("prealloc_clip", func(b *testing.B) {
+				b.ReportAllocs()
+				for b.Loop() {
+					sliceBenchmarkResult = takeIndexedUnknown(f, n)
+				}
+			})
+			b.Run("append_growth", func(b *testing.B) {
+				b.ReportAllocs()
+				for b.Loop() {
+					var out []int
+					next := f.pull()
+					for len(out) < n {
+						_, v, ok := next()
+						if !ok {
+							break
+						}
+						out = append(out, v)
+					}
+					sliceBenchmarkResult = out
+				}
+			})
+		})
+	}
+}
+
 // BenchmarkScanWhileCost isolates the cost of the eager scan Flow.DropWhile
 // and Flow.TakeWhile run on an indexed Flow: the predicate is one comparison
 // and the result is only re-bounded (From's known count lets Count skip
