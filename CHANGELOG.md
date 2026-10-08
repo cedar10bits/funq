@@ -9,6 +9,22 @@ called out here.
 
 ## [Unreleased]
 
+### Changed
+
+- `Flow.Slice` compacts a sparse result, as `Flow.Cache` already does, so a
+  direct caller no longer keeps a buffer sized for the filter input.
+- The scanning form of `Take` compacts a sparse result the same way, limiting
+  the capacity it retains.
+- `DistinctBy`, `ToMap`, and `MapOf` no longer size their maps from the
+  source's size hint, which overallocates when keys repeat or traversal stops
+  early.
+
+### Fixed
+
+- `TakeWhile`'s documented re-run cost on indexed Flows: its predicate runs
+  only at construction, while upstream transformations may run again on each
+  later terminal operation.
+
 ## [0.3.0] - 2026-09-28
 
 ### Added

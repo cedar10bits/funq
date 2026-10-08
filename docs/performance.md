@@ -101,6 +101,12 @@ cumulative allocation, not retained heap: the original array and its copy
 coexist during compaction, so this change can raise peak live allocation.
 The benchmark does not measure the process's peak heap.
 
+The scanning `Take` pre-allocates `min(n, span)` slots rather than growing from
+nil. `BenchmarkTakeScanAllocation` compares the two over 65,536 input slots:
+pre-allocation is faster and allocates less on half and dense results, so
+`Take` keeps it. Growth from nil cuts `B/op` about 21 times on sparse results
+(1,024 survivors), but that metric is cumulative allocation, not peak heap.
+
 `SortBy`'s permutation-sort choice is backed by `BenchmarkSortByStrategies`,
 which measures it against the alternative it replaced: handing `key` straight
 to the comparator instead of sorting an index permutation. At n=1,000,000:
@@ -266,6 +272,7 @@ each stage because the rollback may need it after the stage returns.
 > go test -bench '^BenchmarkTrackPlay' -benchmem -run '^$' .
 > go test -bench '^BenchmarkSliceCompaction$' -benchmem -count=5 -benchtime=100ms -run '^$' .
 > go test -bench '^BenchmarkSliceCompactionCopy$' -benchmem -count=5 -benchtime=200ms -run '^$' .
+> go test -bench '^BenchmarkTakeScanAllocation$' -benchmem -count=5 -benchtime=100ms -run '^$' .
 > ```
 >
 > The `SortBy` table's n=1,000,000 rows need that `-benchtime=6x`: each
