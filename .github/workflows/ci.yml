@@ -53,3 +53,27 @@ jobs:
       - name: go test
         run: go test -race ./...
 
+  fuzz:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [FuzzDifferentialIndexedVsSequential]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: stable
+          check-latest: true
+      - name: go test -fuzz
+        env:
+          FUZZTIME: ${{ (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && '10m' || '30s' }}
+        run: go test -run='^$' -fuzz='^${{ matrix.target }}$' -fuzztime="$FUZZTIME" .
+      # Keep a failing input to reproduce it and commit it as a seed.
+      - name: upload failing input
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: fuzz-${{ matrix.target }}
+          path: testdata/fuzz
+          if-no-files-found: ignore

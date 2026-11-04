@@ -9,8 +9,10 @@ response times vary.
   direction can be agreed.
 - CI must pass: `gofumpt` (formatting), `go vet`, `golangci-lint`, and
   `go test -race ./...`. Run these locally before pushing.
-- CI does not fuzz; `go test -fuzz=FuzzXxx` against a `FuzzXxx` target explores
-  beyond its seed corpus locally.
+- CI fuzzes each `FuzzXxx` target for 30s on every push and pull request, and
+  for 10m in its weekly run. A new target must be added to the `fuzz` job's
+  matrix in `.github/workflows/ci.yml`. Run `go test -fuzz=FuzzXxx` locally to
+  explore further beyond the seed corpus.
 - Add or update examples (`example_test.go`) and tests for any behaviour
   change. Public API changes need a `CHANGELOG.md` entry.
 - Keep the public surface small. A new operation has to earn its place against
