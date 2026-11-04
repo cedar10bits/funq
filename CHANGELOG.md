@@ -24,6 +24,8 @@ called out here.
   traverse the pipeline, so a function passed upstream may run fewer times;
   `Take(n)` with `n` at least the count returns the Flow unchanged, and
   `Drop(n)` returns an empty Flow without traversing.
+- `Concat` with an input of unknown count allocates less per input and
+  traverses faster.
 
 ### Fixed
 
