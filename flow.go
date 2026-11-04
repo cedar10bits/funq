@@ -53,12 +53,13 @@ import (
 //
 //   - Whether its element count is statically known. [From], [FromFn] and
 //     [Optional.AsFlow] establish it and materializing re-establishes it;
-//     [Flow.Map], [Flow.MapIndexed] and [Flow.Reverse] carry it from any
-//     input, while [Flow.Take], [Flow.Drop], [Flow.TakeWhile], [Flow.DropWhile]
-//     and a [Flow.Concat] of inputs that all have one carry it only from a
-//     random-access input. [Flow.Accumulate] derives it as the input's plus
-//     one, [Zip] as the smaller of its two inputs', [Chunk] as the input's
-//     over the chunk size rounded up — each onto a forward-only Flow.
+//     [Flow.Map], [Flow.MapIndexed], [Flow.Reverse], [Flow.Take] and
+//     [Flow.Drop] carry it from any input, while [Flow.TakeWhile],
+//     [Flow.DropWhile] and a [Flow.Concat] of inputs that all have one carry
+//     it only from a random-access input. [Flow.Accumulate] derives it as the
+//     input's plus one, [Zip] as the smaller of its two inputs', [Chunk] as
+//     the input's over the chunk size rounded up — each onto a forward-only
+//     Flow.
 //     [Flow.Filter] gives it up.
 //   - Whether it is still random-access. [FromSeq] builds a forward-only Flow
 //     directly; [Flow.Accumulate], [Flow.MapIndexed], [Zip] and [Chunk] leave
@@ -526,8 +527,11 @@ func (f Flow[T]) Drop(n int) Flow[T] {
 		if f.seq == nil {
 			return f
 		}
+		if f.size != sizeUnknown && n >= f.size {
+			return empty[T]()
+		}
 		seq := f.seq
-		return fromSeq(func(yield func(T) bool) {
+		dropped := func(yield func(T) bool) {
 			i := 0
 			for v := range seq {
 				if i < n {
@@ -538,7 +542,12 @@ func (f Flow[T]) Drop(n int) Flow[T] {
 					return
 				}
 			}
-		})
+		}
+		if f.size == sizeUnknown {
+			return fromSeq(dropped)
+		}
+		// Not fromSeq, which would drop the size (see sizeUnknown).
+		return Flow[T]{seq: dropped, size: f.size - n}
 	}
 	if f.indexedExact() {
 		if n >= f.size {
@@ -577,8 +586,11 @@ func (f Flow[T]) Take(n int) Flow[T] {
 		if f.seq == nil {
 			return f
 		}
+		if f.size != sizeUnknown && n >= f.size {
+			return f
+		}
 		seq := f.seq
-		return fromSeq(func(yield func(T) bool) {
+		taken := func(yield func(T) bool) {
 			i := 0
 			for v := range seq {
 				if !yield(v) {
@@ -588,7 +600,12 @@ func (f Flow[T]) Take(n int) Flow[T] {
 					return
 				}
 			}
-		})
+		}
+		if f.size == sizeUnknown {
+			return fromSeq(taken)
+		}
+		// Not fromSeq, which would drop the size (see sizeUnknown).
+		return Flow[T]{seq: taken, size: n}
 	}
 	if f.indexedExact() {
 		if n >= f.size {

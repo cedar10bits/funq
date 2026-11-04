@@ -343,6 +343,9 @@ func TestAccumulateSize(t *testing.T) {
 	assertEqual(t, 11, f.Count(), "the count is the input's plus one")
 	isFalse(t, f.IsEmpty())
 	assertEqual(t, 0, calls, "a known count answers without traversing")
+	assertEqual(t, 3, f.Take(3).Count())
+	assertEqual(t, 8, f.Drop(3).Count())
+	assertEqual(t, 0, calls, "Take and Drop keep the count")
 
 	// Slice's known-size fast path fills by index, so the scan must emit
 	// exactly size elements.
@@ -351,16 +354,17 @@ func TestAccumulateSize(t *testing.T) {
 	// Concat must not try to index a sequential Flow of known size.
 	eq(t, []int{0, 1, 3, 7, 8}, From(1, 2).Accumulate(0, add).Concat(From(7, 8)))
 
-	// The result is forward-only. Map is 1:1, so it carries the count onward
-	// and Slice's fast path still applies; Take, Drop and Concat need a
-	// random-access input and give it up again, and only Reverse (which
-	// materializes) recovers it.
+	// The result is forward-only. Map, Take and Drop carry the count onward
+	// and Slice's fast path still applies; Concat needs a random-access input
+	// and gives it up, and only Reverse (which materializes) recovers it.
 	assertEqual(t, 11, f.Map(Identity).size)
 	assertEqual(t, 11, len(f.Map(mul2).Slice()))
 	eq(t, []int{0, 0, 2}, f.Map(mul2).Take(3))
 	assertEqual(t, 8, f.Map(mul2).Drop(3).Count())
-	assertEqual(t, sizeUnknown, f.Take(3).size)
-	assertEqual(t, sizeUnknown, f.Drop(3).size)
+	assertEqual(t, 3, f.Take(3).size)
+	assertEqual(t, 8, f.Drop(3).size)
+	assertEqual(t, 11, f.Take(100).size, "Take past the end")
+	assertEqual(t, 0, f.Drop(11).size, "Drop of every element")
 	assertEqual(t, sizeUnknown, f.Concat(From(1, 2)).size)
 	assertEqual(t, 11, f.Reverse().Count())
 

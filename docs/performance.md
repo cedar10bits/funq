@@ -49,7 +49,9 @@ Intermediate operations (`Map`, `Filter`, ...) are lazy. Terminal operations
 > - `Drop`/`Take` on a random-access Flow with a statically known count: O(1),
 >   fully lazy.
 > - `Drop`/`Take` on a forward-only Flow: lazy, but they skip or stop as they
->   traverse.
+>   traverse. A statically known count (e.g. after `Accumulate`, `Zip` or
+>   `Chunk`) carries through, adjusted by n, so `Count`/`IsEmpty` stay O(1)
+>   and `Slice` fills by index.
 > - `Drop`/`Take` on a random-access Flow with unknown count (e.g. after
 >   `Filter`): one pipeline scan at construction time.
 > - `DropWhile`/`TakeWhile` on any random-access Flow: one scan at

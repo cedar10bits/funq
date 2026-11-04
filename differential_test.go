@@ -28,6 +28,12 @@ var diffOps = []diffOp{
 	{"Reverse", func(f Flow[int]) Flow[int] { return f.Reverse() }},
 	{"SortBy(identity)", func(f Flow[int]) Flow[int] { return f.SortBy(Identity) }},
 	{"Concat(2,empty)", func(f Flow[int]) Flow[int] { return f.Concat(From(7, 8), From[int]()) }},
+	// Forward-only with a known count, a state asSeq never produces.
+	{"MapIndexed(+i)", func(f Flow[int]) Flow[int] { return f.MapIndexed(func(i, v int) int { return v + i }) }},
+	{"Accumulate(+)", func(f Flow[int]) Flow[int] { return f.Accumulate(0, func(a, v int) int { return (a + v) % 10 }) }},
+	{"Zip(self).First", func(f Flow[int]) Flow[int] {
+		return Zip(f, From(0, 1, 2, 3, 4, 5)).Map(func(p Pair[int, int]) int { return p.First })
+	}},
 	{"DistinctBy(%3)", func(f Flow[int]) Flow[int] { return f.DistinctBy(func(v int) int { return v % 3 }) }},
 }
 

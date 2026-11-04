@@ -18,6 +18,12 @@ called out here.
 - `DistinctBy`, `ToMap`, and `MapOf` no longer size their maps from the
   source's size hint, which overallocates when keys repeat or traversal stops
   early.
+- `Take` and `Drop` on a forward-only Flow with a statically known count (such
+  as `Accumulate`, `Zip`, or `Chunk` output) keep that count, adjusted by `n`,
+  instead of discarding it. `Count` and `IsEmpty` on the result no longer
+  traverse the pipeline, so a function passed upstream may run fewer times;
+  `Take(n)` with `n` at least the count returns the Flow unchanged, and
+  `Drop(n)` returns an empty Flow without traversing.
 
 ### Fixed
 
