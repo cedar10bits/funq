@@ -381,11 +381,6 @@ func (f Flow[T]) Map[U any](fn func(T) U) Flow[U] {
 			}
 		}
 	}
-	if f.size == sizeUnknown {
-		return fromSeq(mapped)
-	}
-	// Not fromSeq, which would drop the size (see sizeUnknown): Map is 1:1, so
-	// a forward-only input's known count carries onto the result.
 	return Flow[U]{seq: mapped, size: f.size}
 }
 
@@ -416,11 +411,6 @@ func (f Flow[T]) MapIndexed[U any](fn func(int, T) U) Flow[U] {
 			return true
 		})
 	}
-	if f.size == sizeUnknown {
-		return fromSeq(scan)
-	}
-	// Not fromSeq, which would drop the size (see sizeUnknown): MapIndexed is
-	// 1:1, so a known input count carries onto the result.
 	return Flow[U]{seq: scan, size: f.size}
 }
 
