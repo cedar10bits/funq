@@ -49,7 +49,7 @@ Intermediate operations (`Map`, `Filter`, ...) are lazy. Terminal operations
 > - `Drop`/`Take` on a random-access Flow with a statically known count: O(1),
 >   fully lazy.
 > - `Drop`/`Take` on a forward-only Flow: lazy, but they skip or stop as they
->   traverse. A statically known count (e.g. after `Accumulate`, `Zip` or
+>   traverse. A statically known count (e.g. after `Accumulate` or
 >   `Chunk`) carries through, adjusted by n, so `Count`/`IsEmpty` stay O(1)
 >   and `Slice` fills by index.
 > - `Drop`/`Take` on a random-access Flow with unknown count (e.g. after
@@ -73,8 +73,9 @@ Intermediate operations (`Map`, `Filter`, ...) are lazy. Terminal operations
 >
 > `Reverse` is O(1) on random-access Flows, but materializes forward-only
 > Flows (built directly by `FromSeq`, or produced by `Accumulate`, `FlatMap`,
-> `MapIndexed`, `Distinct`, `DistinctBy`, `Zip`, `Chunk`, or `Concat` with
-> unknown-size inputs).
+> `Distinct`, `DistinctBy`, `Chunk`, `Concat` with unknown-size inputs, or
+> `MapIndexed` and `Zip` with an input that is forward-only or has no
+> statically known count).
 
 Two of those are worth knowing the cost of directly:
 

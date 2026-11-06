@@ -126,6 +126,8 @@ func TestFlowDocProperties(t *testing.T) {
 		{"TakeWhile", propsOf(base.TakeWhile(LessThan(3))), indexedKnown},
 		{"DropWhile", propsOf(base.DropWhile(LessThan(3))), indexedKnown},
 		{"Reverse", propsOf(base.Reverse()), indexedKnown},
+		{"MapIndexed", propsOf(base.MapIndexed(func(i, v int) int { return i + v })), indexedKnown},
+		{"Zip", propsOf(Zip(base, base)), indexedKnown},
 		{"ConcatOfKnown", propsOf(From(1, 2).Concat(From(3, 4))), indexedKnown},
 		{"ReverseMaterializesSequential", propsOf(base.asSeq().Reverse()), indexedKnown},
 
@@ -143,8 +145,8 @@ func TestFlowDocProperties(t *testing.T) {
 		{"Distinct", propsOf(Distinct(base)), forwardOnly},
 		{"ConcatOfUnknown", propsOf(From(1, 2).Concat(From(3, 4).Filter(even))), forwardOnly},
 		// Forward-only, yet keep a known count when their inputs carry one.
-		{"MapIndexed", propsOf(base.MapIndexed(func(i, v int) int { return i + v })), flowProps{knownCount: true}},
-		{"Zip", propsOf(Zip(base, base)), flowProps{knownCount: true}},
+		{"MapIndexedOfForwardOnly", propsOf(base.Accumulate(0, add).MapIndexed(func(i, v int) int { return i + v })), flowProps{knownCount: true}},
+		{"ZipOfForwardOnly", propsOf(Zip(base, base.Accumulate(0, add))), flowProps{knownCount: true}},
 		{"Chunk", propsOf(Chunk[int](2)(base)), flowProps{knownCount: true}},
 		{"MapIndexedOfUnknown", propsOf(base.Filter(even).MapIndexed(func(i, v int) int { return i + v })), forwardOnly},
 		{"ZipOfUnknown", propsOf(Zip(base, base.asSeq())), forwardOnly},
@@ -209,6 +211,12 @@ func TestMapIndexed(t *testing.T) {
 	assertEqual(t, 3, From(10, 20, 30).MapIndexed(pair).size)
 	assertEqual(t, 3, len(From(10, 20, 30).MapIndexed(pair).Slice()))
 	assertEqual(t, sizeUnknown, FromFn(4, Identity).Filter(even).MapIndexed(pair).size)
+
+	// random access: positions are those before Reverse, Drop and Take
+	eq(t, []iv{{2, 30}, {1, 20}, {0, 10}}, From(10, 20, 30).MapIndexed(pair).Reverse())
+	eq(t, []iv{{1, 20}, {2, 30}}, From(10, 20, 30).MapIndexed(pair).Drop(1))
+	eq(t, []iv{{0, 4}, {1, 3}}, FromFn(5, Identity).Reverse().MapIndexed(pair).Take(2))
+	eq(t, []iv{{4, 0}, {3, 1}, {2, 2}, {1, 3}, {0, 4}}, FromFn(5, Identity).Reverse().MapIndexed(pair).Reverse())
 }
 
 func TestForEachIndexed(t *testing.T) {
@@ -1138,6 +1146,11 @@ func TestZip(t *testing.T) {
 	assertEqual(t, 2, Zip(From(1, 2), From("a", "b", "c")).size)
 	assertEqual(t, 3, len(Zip(FromFn(3, Identity), FromFn(5, Identity)).Slice()))
 	assertEqual(t, sizeUnknown, Zip(From(1, 2), From(3, 4).asSeq()).size)
+
+	// random access: pairs by position, whichever direction each side runs
+	eq(t, []Pair[int, int]{{1, 20}, {2, 10}}, Zip(From(1, 2, 3), From(10, 20).Reverse()))
+	eq(t, []Pair[int, int]{{2, 10}, {1, 20}}, Zip(From(1, 2, 3), From(10, 20).Reverse()).Reverse())
+	eq(t, []Pair[int, int]{{2, 20}}, Zip(From(1, 2, 3), From(10, 20)).Drop(1))
 }
 
 func TestClipSparse(t *testing.T) {

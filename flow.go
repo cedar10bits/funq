@@ -58,17 +58,17 @@ import (
 //     [Flow.DropWhile] and a [Flow.Concat] of inputs that all have one carry
 //     it only from a random-access input. [Flow.Accumulate] derives it as the
 //     input's plus one, [Zip] as the smaller of its two inputs', [Chunk] as
-//     the input's over the chunk size rounded up — each onto a forward-only
-//     Flow.
-//     [Flow.Filter] gives it up.
+//     the input's over the chunk size rounded up. [Flow.Filter] gives it up.
 //   - Whether it is still random-access. [FromSeq] builds a forward-only Flow
-//     directly; [Flow.Accumulate], [Flow.MapIndexed], [Zip] and [Chunk] leave
-//     the Flow forward-only but keep a statically known count when their
-//     inputs have one; [Flow.FlatMap], [Flow.DistinctBy], [Distinct] and a
-//     [Flow.Concat] whose inputs do not all have a known count leave it
-//     forward-only with no statically known count either, until it is
-//     materialized again. [Flow.Reverse] materializes such a Flow, and
-//     [Flow.Count], [Flow.IsEmpty] and [Flow.Last] have to traverse it.
+//     directly; [Flow.MapIndexed] and [Zip] keep random access only when
+//     every input is random-access with a statically known count;
+//     [Flow.Accumulate] and [Chunk] always leave the Flow forward-only; all
+//     four keep a statically known count when their inputs have one;
+//     [Flow.FlatMap], [Flow.DistinctBy], [Distinct] and a [Flow.Concat] whose
+//     inputs do not all have a known count leave it forward-only with no
+//     statically known count either, until it is materialized again.
+//     [Flow.Reverse] materializes such a Flow, and [Flow.Count],
+//     [Flow.IsEmpty] and [Flow.Last] have to traverse it.
 //
 // A step that can fail belongs in [Groove]: Map/Filter/... take [Fp], not
 // [Fe]. Convert it to [Fp] first (e.g. with [IgnoreError] or [PanicOnError]).
@@ -272,6 +272,17 @@ func (f Flow[T]) walk(yield func(T) bool) bool {
 	return true
 }
 
+// atPosition returns the element at position k in iteration order.
+//
+// atPosition must only be called when f.indexedExact().
+func (f Flow[T]) atPosition() func(k int) T {
+	at, head := f.at, f.head
+	if f.head > f.tail {
+		return func(k int) T { v, _ := at(head - 1 - k); return v }
+	}
+	return func(k int) T { v, _ := at(head + k); return v }
+}
+
 // pull returns a stateful cursor over the live elements of an indexed Flow,
 // in iteration order. Each call returns the physical index the next live
 // element was found at, the element itself, and true; or false once
@@ -382,9 +393,18 @@ func (f Flow[T]) Map[U any](fn func(T) U) Flow[U] {
 // element's 0-based position in iteration order.
 //
 // The position is logical, not a source index: it counts elements as they
-// are yielded, so it stays 0, 1, 2, ... after Filter or Reverse. Unlike
-// [Flow.Map], MapIndexed always leaves the Flow forward-only (see [Flow]).
+// are yielded, so it stays 0, 1, 2, ... after Filter or Reverse. The result
+// is random-access only when f is random-access with a statically known
+// count (see [Flow]).
 func (f Flow[T]) MapIndexed[U any](fn func(int, T) U) Flow[U] {
+	if f.indexedExact() {
+		at, head := f.at, f.head
+		pos := func(i int) (U, bool) { v, _ := at(i); return fn(i-head, v), true }
+		if f.head > f.tail {
+			pos = func(i int) (U, bool) { v, _ := at(i); return fn(head-1-i, v), true }
+		}
+		return Flow[U]{at: pos, head: f.head, tail: f.tail, size: f.size}
+	}
 	src := f
 	scan := func(yield func(U) bool) {
 		i := 0
@@ -1192,6 +1212,18 @@ func Zip[T, U any](a Flow[T], b Flow[U]) Flow[Pair[T, U]] {
 	// 1.27 and also rejects a non-generic method returning Flow[[]T]. Flow[T]'s
 	// method set would reference Flow[Pair[T, U]], whose method set references
 	// Flow[Pair[Pair[T, U], V]], without bound, so the compiler rejects it.
+	if a.indexedExact() && b.indexedExact() {
+		n := min(a.size, b.size)
+		if n == 0 {
+			return empty[Pair[T, U]]()
+		}
+		atA, atB := a.atPosition(), b.atPosition()
+		return Flow[Pair[T, U]]{
+			at:   func(k int) (Pair[T, U], bool) { return Pair[T, U]{atA(k), atB(k)}, true },
+			tail: n,
+			size: n,
+		}
+	}
 	seq := func(yield func(Pair[T, U]) bool) {
 		// One side is ranged over (the driver), the other pulled one element
 		// at a time. An indexed side can be pulled directly, so prefer it as

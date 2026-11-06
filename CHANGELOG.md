@@ -19,13 +19,18 @@ called out here.
   source's size hint, which overallocates when keys repeat or traversal stops
   early.
 - `Take` and `Drop` on a forward-only Flow with a statically known count (such
-  as `Accumulate`, `Zip`, or `Chunk` output) keep that count, adjusted by `n`,
+  as `Accumulate` or `Chunk` output) keep that count, adjusted by `n`,
   instead of discarding it. `Count` and `IsEmpty` on the result no longer
   traverse the pipeline, so a function passed upstream may run fewer times;
   `Take(n)` with `n` at least the count returns the Flow unchanged, and
   `Drop(n)` returns an empty Flow without traversing.
 - `Concat` with an input of unknown count allocates less per input and
   traverses faster.
+- `MapIndexed` and `Zip` keep random access when their inputs are
+  random-access with a statically known count, so a following `Reverse`,
+  `Take`, `Drop`, or `Concat` no longer walks or materializes every element.
+  Since `Reverse` no longer materializes such a result, `Cache` it before
+  traversing it more than once.
 
 ### Fixed
 
