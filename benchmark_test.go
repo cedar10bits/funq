@@ -327,6 +327,24 @@ func BenchmarkIndexedFastPath(b *testing.B) {
 	}
 }
 
+func BenchmarkSortByTraversal(b *testing.B) {
+	input := FromFn(10000, func(i int) int { return 10000 - i })
+	b.Run("Slice", func(b *testing.B) {
+		for b.Loop() {
+			input.SortBy(Identity).Slice()
+		}
+	})
+	b.Run("Repeated", func(b *testing.B) {
+		sorted := input.SortBy(Identity)
+		for b.Loop() {
+			for range 10 {
+				for range sorted.Seq() {
+				}
+			}
+		}
+	})
+}
+
 // dropLazy and takeLazy are lazy alternatives to Flow's Drop/Take for the
 // sizeUnknown indexed case (e.g. after Filter), where those two scan eagerly.
 // dropWhileLazy and takeWhileLazy are lazy alternatives to DropWhile/TakeWhile

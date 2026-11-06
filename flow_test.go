@@ -830,6 +830,31 @@ func TestSortByMatchesComparatorSort(t *testing.T) {
 	}
 }
 
+func TestSortByLargeStableReference(t *testing.T) {
+	t.Parallel()
+	r := rand.New(rand.NewPCG(0x5024, 0xB1AD))
+	for _, n := range []int{1, 2, 10000} {
+		xs := make([]kv, n)
+		for i := range xs {
+			xs[i] = kv{r.IntN(31), strconv.Itoa(i)}
+		}
+		original := slices.Clone(xs)
+		for _, desc := range []bool{false, true} {
+			want := slices.Clone(xs)
+			slices.SortStableFunc(want, func(a, b kv) int {
+				if desc {
+					return cmp.Compare(b.k, a.k)
+				}
+				return cmp.Compare(a.k, b.k)
+			})
+			got := From(xs...).sortBy(func(v kv) int { return v.k }, desc)
+			assertEqual(t, want, got.Slice())
+			assertEqual(t, want, got.Slice())
+			assertEqual(t, original, xs)
+		}
+	}
+}
+
 func TestDistinct(t *testing.T) {
 	t.Parallel()
 	eq(t, []int{}, Distinct(From[int]()))

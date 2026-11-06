@@ -158,6 +158,22 @@ other two shapes' edge doesn't depend on scale, only on key cost and element
 size. Permutation's memory cost for identity/int holds close to that ~2.0x
 across n too (~1.9x at n=100, ~2.0x at n=10,000).
 
+Applying the sorted permutation to the materialized input in place was
+also evaluated, reusing the index fields as visited markers. The adoption
+gate was no more than 5% median time regression in the important end-to-end
+cases. Five 200 ms samples at n=1,000,000 measured:
+
+| Shape | Retained permutation | In-place candidate | Change |
+| ----- | -------------------- | ------------------ | ------ |
+| int, key=identity | 258 ms | 281 ms | +9.2% |
+| 64B elem, key=field | 497 ms | 607 ms | +21.9% |
+| 64B elem, key=tolower | 534 ms | 662 ms | +23.9% |
+
+The candidate would have released the key/index backing array after
+construction and sped ten traversals of a materialized 10,000-int sort from
+256 → 215 µs, but its large-sort regressions exceeded the gate, so `SortBy`
+keeps the permutation.
+
 `BenchmarkIndexedFastPath` constructs each operation over 1,000 random-access
 ints. Five samples on the machine above give these median times; the before
 column uses `cf0b9f6`'s forward-only implementation:
@@ -290,7 +306,9 @@ each stage because the rollback may need it after the stage returns.
 > go test -bench '^BenchmarkEarlyExit$' -benchmem -run '^$' .
 > go test -bench 'BenchmarkSortByStrategies/n=(100|10000)$' -benchmem -run '^$' .
 > go test -bench 'BenchmarkSortByStrategies/n=1000000$' -benchmem -benchtime=6x -run '^$' .
+> go test -bench '^BenchmarkSortByStrategies$' -benchmem -benchtime=200ms -count=5 -run '^$' .
 > go test -bench '^BenchmarkIndexedFastPath$' -benchmem -count=5 -benchtime=200ms -run '^$' .
+> go test -bench '^BenchmarkSortByTraversal$' -benchmem -count=5 -benchtime=200ms -run '^$' .
 > go test -bench '^BenchmarkTrackPlay' -benchmem -run '^$' .
 > go test -bench '^BenchmarkSliceCompaction$' -benchmem -count=5 -benchtime=100ms -run '^$' .
 > go test -bench '^BenchmarkSliceCompactionCopy$' -benchmem -count=5 -benchtime=200ms -run '^$' .
