@@ -278,6 +278,55 @@ func BenchmarkZip(b *testing.B) {
 	}
 }
 
+func BenchmarkIndexedFastPath(b *testing.B) {
+	for _, sequential := range []bool{false, true} {
+		name := "indexed"
+		if sequential {
+			name = "forward"
+		}
+		b.Run(name, func(b *testing.B) {
+			input := FromFn(1000, Identity)
+			if sequential {
+				input = input.asSeq()
+			}
+			b.Run("MapIndexed", func(b *testing.B) {
+				b.Run("ReverseFirst", func(b *testing.B) {
+					for b.Loop() {
+						input.MapIndexed(func(i, v int) int { return i + v }).Reverse().First()
+					}
+				})
+				b.Run("DropSlice", func(b *testing.B) {
+					for b.Loop() {
+						input.MapIndexed(func(i, v int) int { return i + v }).Drop(990).Slice()
+					}
+				})
+				b.Run("Slice", func(b *testing.B) {
+					for b.Loop() {
+						input.MapIndexed(func(i, v int) int { return i + v }).Slice()
+					}
+				})
+			})
+			b.Run("Zip", func(b *testing.B) {
+				b.Run("ReverseFirst", func(b *testing.B) {
+					for b.Loop() {
+						Zip(input, input).Reverse().First()
+					}
+				})
+				b.Run("DropSlice", func(b *testing.B) {
+					for b.Loop() {
+						Zip(input, input).Drop(990).Slice()
+					}
+				})
+				b.Run("Slice", func(b *testing.B) {
+					for b.Loop() {
+						Zip(input, input).Slice()
+					}
+				})
+			})
+		})
+	}
+}
+
 // dropLazy and takeLazy are lazy alternatives to Flow's Drop/Take for the
 // sizeUnknown indexed case (e.g. after Filter), where those two scan eagerly.
 // dropWhileLazy and takeWhileLazy are lazy alternatives to DropWhile/TakeWhile

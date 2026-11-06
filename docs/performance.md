@@ -158,6 +158,24 @@ other two shapes' edge doesn't depend on scale, only on key cost and element
 size. Permutation's memory cost for identity/int holds close to that ~2.0x
 across n too (~1.9x at n=100, ~2.0x at n=10,000).
 
+`BenchmarkIndexedFastPath` constructs each operation over 1,000 random-access
+ints. Five samples on the machine above give these median times; the before
+column uses `cf0b9f6`'s forward-only implementation:
+
+| Operation | Before | Indexed | Before → indexed allocation |
+| --------- | ------ | ------- | --------------------------- |
+| MapIndexed, Reverse().First() | 9.67 µs | 62.8 ns | 8,488 → 89 B/op |
+| MapIndexed, Drop(990).Slice() | 6.58 µs | 134 ns | 472 → 208 B/op |
+| MapIndexed, Slice() | 8.67 µs | 5.74 µs | 8,400 → 8,320 B/op |
+| Zip, Reverse().First() | 12.8 µs | 86.3 ns | 16,776 → 145 B/op |
+| Zip, Drop(990).Slice() | 8.70 µs | 199 ns | 672 → 336 B/op |
+| Zip, Slice() | 10.1 µs | 8.50 µs | 16,680 → 16,560 B/op |
+
+Indexed `MapIndexed` and `Zip` make these reverse/drop pipelines O(1)-ish,
+while full `Slice` traversal is modestly faster. The benchmark's `asSeq()`
+rows compare forward-only inputs, with both Zip inputs adding `iter.Pull`
+coroutine costs.
+
 See `Flow.Take` and `Flow.SortBy` in `flow.go` for why each implementation
 was chosen over the alternative it replaced.
 
@@ -272,6 +290,7 @@ each stage because the rollback may need it after the stage returns.
 > go test -bench '^BenchmarkEarlyExit$' -benchmem -run '^$' .
 > go test -bench 'BenchmarkSortByStrategies/n=(100|10000)$' -benchmem -run '^$' .
 > go test -bench 'BenchmarkSortByStrategies/n=1000000$' -benchmem -benchtime=6x -run '^$' .
+> go test -bench '^BenchmarkIndexedFastPath$' -benchmem -count=5 -benchtime=200ms -run '^$' .
 > go test -bench '^BenchmarkTrackPlay' -benchmem -run '^$' .
 > go test -bench '^BenchmarkSliceCompaction$' -benchmem -count=5 -benchtime=100ms -run '^$' .
 > go test -bench '^BenchmarkSliceCompactionCopy$' -benchmem -count=5 -benchtime=200ms -run '^$' .
