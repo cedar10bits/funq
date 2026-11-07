@@ -110,6 +110,25 @@ func TestFromSeq(t *testing.T) {
 	assertEqual(t, 1, once, "Cache must range over seq exactly once")
 }
 
+func TestFromSeqTerminalConsumes(t *testing.T) {
+	t.Parallel()
+	for name, consume := range map[string]func(Flow[int]){
+		"IsEmpty": func(f Flow[int]) { f.IsEmpty() },
+		"First":   func(f Flow[int]) { f.First() },
+		"Count":   func(f Flow[int]) { f.Count() },
+	} {
+		t.Run(name, func(t *testing.T) {
+			for _, values := range [][]int{nil, {1, 2, 3}} {
+				f := FromSeq(slices.Values(values))
+				consume(f)
+				val, panicked := didPanic(func() { f.Slice() })
+				isTrue(t, panicked)
+				assertEqual(t, "funq: FromSeq Flow consumed more than once; Cache it first", val)
+			}
+		})
+	}
+}
+
 func TestFromSeqOperationsRangeOnce(t *testing.T) {
 	t.Parallel()
 	src := func() Flow[int] { return FromSeq(slices.Values([]int{5, 3, 3, 8, 1, 6})) }

@@ -194,10 +194,11 @@ func FromFn[T any](n int, fn func(int) T) Flow[T] {
 // it a second time, directly or through any Flow derived from it, panics. A
 // single-use iter.Seq, such as one backed by a channel or a bufio.Scanner,
 // is therefore safe, while reuse fails loudly instead of yielding nothing.
-// Call [Flow.Cache] before traversing more than once. An infinite seq is
-// unsupported: early-exit operations may appear to work on it, but nothing
-// guarantees they will, and Count, Slice and the like never return. For a
-// lazy source that can be traversed repeatedly, use [FromFn].
+// Any traversing operation, including IsEmpty, First and Count, consumes it.
+// Thus if !f.IsEmpty() { f.Slice() } panics; call [Flow.Cache] first.
+// An infinite seq is unsupported: early-exit operations may appear to work
+// on it, but nothing guarantees they will, and Count, Slice and the like never
+// return. For a lazy source that can be traversed repeatedly, use [FromFn].
 func FromSeq[T any](seq iter.Seq[T]) Flow[T] {
 	if seq == nil {
 		return empty[T]()
@@ -976,8 +977,8 @@ func (f Flow[T]) Reduce(fn func(T, T) T) Optional[T] {
 func (f Flow[T]) Slice() []T {
 	if f.size != sizeUnknown {
 		// A known size is exact (the hole-free invariant, or Accumulate's
-		// one-per-element construction), so fill by index and skip append's
-		// bounds checks.
+		// one-per-element construction), so fill by index to avoid append's
+		// capacity checks and regrowth.
 		out := make([]T, f.size)
 		i := 0
 		for v := range f.Seq() {

@@ -484,15 +484,12 @@ func BenchmarkTakeDropStrategies(b *testing.B) {
 // the lazy alternative re-runs the pipeline per terminal call while the eager
 // one keeps its result.
 //
-// Result (Apple M2, n=1,000,000, survivors=10): at take=10 the eager Take
-// generates 10 elements however many terminals follow, against 10 per terminal
-// for the lazy one — ~265 ns/op against ~466 on a single terminal, ~457
-// against ~1,189 over three. take=20 is the case neither can short-circuit,
-// since reaching the end is the only way to establish that no 20th element
-// exists. Both scan all n for ~5.7 ms on a single terminal, but three
-// terminals leave the eager version unchanged while the lazy one triples to
-// ~16.9 ms. take=n also measures a requested count far above the survivor
-// count, where the retained slice is sparse.
+// Result (Apple M2, five 100 ms samples, n=1,000,000, survivors=10):
+// at take=10, one terminal costs ~161 ns eager vs ~249 ns lazy; three cost
+// ~280 ns vs ~619 ns. Eager Take generates 10 elements once, lazy once per
+// terminal. At take=20 neither can short-circuit: one terminal takes ~3.26 ms
+// eager vs ~2.96 ms lazy; three take ~3.25 ms vs ~8.89 ms. take=n also measures
+// a count far above the survivors, where the retained slice is sparse.
 func BenchmarkTakeShortCircuit(b *testing.B) {
 	const (
 		n         = 1_000_000
