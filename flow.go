@@ -809,12 +809,11 @@ func (f Flow[T]) sortBy[K cmp.Ordered](key func(T) K, desc bool) Flow[T] {
 	for i, v := range s {
 		pairs[i] = Pair[K, int]{key(v), i}
 	}
-	// One literal per call: picking the comparator into a variable measured 1-2% slower.
+	compare := func(a, b Pair[K, int]) int { return cmp.Compare(a.First, b.First) }
 	if desc {
-		slices.SortStableFunc(pairs, func(a, b Pair[K, int]) int { return cmp.Compare(b.First, a.First) })
-	} else {
-		slices.SortStableFunc(pairs, func(a, b Pair[K, int]) int { return cmp.Compare(a.First, b.First) })
+		compare = func(a, b Pair[K, int]) int { return cmp.Compare(b.First, a.First) }
 	}
+	slices.SortStableFunc(pairs, compare)
 	return Flow[T]{
 		at:   func(i int) (T, bool) { return s[pairs[i].Second], true },
 		head: 0,
