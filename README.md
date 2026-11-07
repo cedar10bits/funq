@@ -70,8 +70,8 @@ Reach for funq when:
   mutates as it goes.
 
 It is not all-or-nothing: `Flow.Seq` yields a standard `iter.Seq[T]` and
-`FromSeq` consumes one, so funq chains and standard-library iterators compose in
-either direction.
+`FromSeq` consumes a finite one (lazily, and only once; `Cache()` to reuse it),
+so funq chains and standard-library iterators compose in either direction.
 
 ## The types
 
@@ -193,8 +193,10 @@ like `First`, `Find`, `Any`, or `Take` (without ending the chain) turn an O(N)
 computation into O(k).
 
 A terminal operation may re-run the whole pipeline from the source each time;
-`Cache()` avoids that. `Count()` and `IsEmpty()` are the exception — when the
-element count is statically known they answer from it without traversing at all.
+`Cache()` avoids that, and is required to traverse a `FromSeq` pipeline more
+than once (a second consumption panics). `Count()` and `IsEmpty()` are the
+exception — when the element count is statically known they answer from it
+without traversing at all.
 
 See [docs/performance.md](docs/performance.md) for the full benchmark breakdown,
 methodology, and reproduce commands.

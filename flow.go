@@ -12,9 +12,9 @@ import (
 // transformation methods carry their own type parameter and therefore change
 // the element type while keeping the chain fluent (see [Flow.Map],
 // [Flow.FlatMap], [Flow.Fold]). Whether a Flow is eager or lazy is a property
-// of its source: From wraps concrete data, FromFn computes on demand. That
-// describes how elements are produced, not how many times a pipeline built
-// on either one runs.
+// of its source: From wraps concrete data, FromFn computes on demand, FromSeq
+// wraps a finite iter.Seq lazily. That describes how elements are produced, not
+// how many times a pipeline built on them runs.
 //
 // Intermediate operations build a pipeline; terminal operations run it. A
 // terminal operation returns something other than a Flow
@@ -25,8 +25,9 @@ import (
 // pipeline cannot be relied on to run only once: a terminal operation that
 // needs the elements may re-run it from the source. [Flow.Count] and
 // [Flow.IsEmpty] are the exception — they answer from the statically known
-// count when there is one, without running anything. That leaves the
-// caller two rules:
+// count when there is one, without running anything. A pipeline built on
+// [FromSeq] is the opposite exception: it can be consumed once in total, and
+// a second consumption panics. That leaves the caller two rules:
 //
 //  1. Keep the functions passed to Map/Filter/... pure: this package does not
 //     guarantee when, how many times, or in what order they are invoked. An
@@ -35,7 +36,8 @@ import (
 //     again whenever an intermediate operation evaluates part of the pipeline
 //     early.
 //  2. To traverse an expensive pipeline more than once, materialize it with
-//     [Flow.Cache] so it runs exactly once.
+//     [Flow.Cache] so it runs exactly once. A [FromSeq] pipeline must be
+//     cached before it is traversed more than once.
 //
 // Under these rules evaluation timing is unobservable, and the implementation
 // exploits that: some intermediate operations evaluate part of the pipeline
@@ -184,19 +186,31 @@ func FromFn[T any](n int, fn func(int) T) Flow[T] {
 
 // FromSeq creates a lazy Flow over the elements of seq: the way into funq from
 // the standard library's iterator vocabulary. The result is forward-only with
-// no statically known element count (see the [Flow] documentation's second
-// bullet). FromSeq(nil) is the exception, returning the empty Flow, whose
-// count is statically known to be zero.
+// no statically known element count (see the [Flow] documentation's two
+// bullets on count and random access). FromSeq(nil) is the exception,
+// returning the empty Flow, whose count is statically known to be zero.
 //
-// seq must be restartable: per the [Flow] documentation's rule 1, a terminal
-// operation may range over it more than once. A single-use iter.Seq — one
-// backed by a channel or a bufio.Scanner, for instance — must be [Flow.Cache]d
-// first, or later terminal operations will see it already exhausted.
+// seq must be finite, and the result can be consumed only once: ranging over
+// it a second time, directly or through any Flow derived from it, panics. A
+// single-use iter.Seq, such as one backed by a channel or a bufio.Scanner,
+// is therefore safe, while reuse fails loudly instead of yielding nothing.
+// Call [Flow.Cache] before traversing more than once. An infinite seq is
+// unsupported: early-exit operations may appear to work on it, but nothing
+// guarantees they will, and Count, Slice and the like never return. For a
+// lazy source that can be traversed repeatedly, use [FromFn].
 func FromSeq[T any](seq iter.Seq[T]) Flow[T] {
 	if seq == nil {
 		return empty[T]()
 	}
-	return fromSeq(seq)
+	// A plain bool suffices: a Flow is already not safe for concurrent use.
+	ranged := false
+	return fromSeq(func(yield func(T) bool) {
+		if ranged {
+			panic("funq: FromSeq Flow consumed more than once; Cache it first")
+		}
+		ranged = true
+		seq(yield)
+	})
 }
 
 func fromSeq[T any](seq iter.Seq[T]) Flow[T] {
@@ -211,9 +225,10 @@ func empty[T any]() Flow[T] { return Flow[T]{} }
 // way back in.
 //
 // The iterator is a view of the Flow, not a snapshot: each range over it may
-// re-run the pipeline. Call [Flow.Cache] first when the pipeline is
-// expensive and the iterator is consumed more than once. Breaking out of the
-// range stops the pipeline where it is.
+// re-run the pipeline; one built on [FromSeq] panics on its second range. Call
+// [Flow.Cache] first when the pipeline is expensive, or built on FromSeq, and
+// the iterator is consumed more than once. Breaking out of the range stops the
+// pipeline where it is.
 func (f Flow[T]) Seq() iter.Seq[T] {
 	return func(yield func(T) bool) {
 		if f.at != nil {

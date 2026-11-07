@@ -11,6 +11,12 @@ called out here.
 
 ### Changed
 
+- **Breaking:** the sequence given to `FromSeq` must be finite, and a Flow
+  built on it can be consumed only once: a second consumption, directly or
+  through a derived Flow, panics. Call `Cache` to traverse more than once.
+  Single-use sequences are now safe, since misuse panics instead of silently
+  yielding nothing. An infinite sequence is unsupported: early-exit operations
+  may appear to work on it, but `Count`, `Slice` and the like never return.
 - `Flow.Slice` compacts a sparse result, as `Flow.Cache` already does, so a
   direct caller no longer keeps a buffer sized for the filter input.
 - The scanning form of `Take` compacts a sparse result the same way, limiting

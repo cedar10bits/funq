@@ -36,6 +36,9 @@ Eager vs lazy is a property of how a Flow is constructed, not a separate type:
   `xs`, so don't mutate it afterward).
 - **Lazy**: `FromFn` generates elements on demand, ideal for large
   datasets or when you only need a subset (`Take`/`First` stop early).
+  `FromSeq` is lazy too, over a finite `iter.Seq`, but a Flow built on it can
+  be consumed only once: a second consumption panics, so `Cache` it first to
+  traverse more than once.
 
 Intermediate operations (`Map`, `Filter`, ...) are lazy. Terminal operations
 (`Slice`, `Reduce`, `Count`, ...) drive the computation.
@@ -192,6 +195,11 @@ while full `Slice` traversal is modestly faster. The benchmark's `asSeq()`
 rows compare forward-only inputs, with both Zip inputs adding `iter.Pull`
 coroutine costs.
 
+Zip over two forward-only inputs could collect one side instead of using
+`iter.Pull`: a full traversal of 10,000 pairs drops from about 680 µs to
+132 µs, but `First` rises from about 0.4 µs to 64 µs, so Zip keeps
+`iter.Pull`.
+
 See `Flow.Take` and `Flow.SortBy` in `flow.go` for why each implementation
 was chosen over the alternative it replaced.
 
@@ -200,8 +208,9 @@ was chosen over the alternative it replaced.
 > source — the `FromFn` generator (if the source is one) and every
 > `Map`/`Filter` function along the way may run again each time. `Count`
 > and `IsEmpty` are the exception: when the element count is statically
-> known, they answer from it directly instead of traversing. This
-> matters when:
+> known, they answer from it directly instead of traversing. A pipeline built
+> on `FromSeq` is the opposite case: it can be consumed once, and a second
+> consumption panics unless it was `Cache`d. This matters when:
 >
 > - **The functions are expensive.** Two terminal calls do the work twice.
 >   Call `Cache()` once to materialize the result and reuse it across traversals.

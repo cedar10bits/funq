@@ -41,9 +41,9 @@ func ExampleFromFn() {
 }
 
 func ExampleFromSeq() {
-	// FromSeq brings a stdlib iter.Seq into a Flow directly, so the rest of
-	// the chain stays lazy. Without FromSeq, the only way in is materializing
-	// the source first with slices.Collect.
+	// FromSeq brings a finite stdlib iter.Seq into a Flow directly, so the
+	// rest of the chain stays lazy. The result can be consumed only once;
+	// Cache it to traverse again.
 	result := funq.FromSeq(slices.Values([]int{1, 2, 3, 4, 5})).
 		Filter(func(v int) bool { return v%2 == 0 }).
 		Map(func(v int) int { return v * 10 }).

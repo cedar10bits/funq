@@ -7,6 +7,7 @@ import (
 	"math/rand/v2"
 	"slices"
 	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -48,10 +49,10 @@ func TestFromFn(t *testing.T) {
 
 func TestFromSeq(t *testing.T) {
 	t.Parallel()
-	eq(t, []int{1, 2, 3}, FromSeq(slices.Values([]int{1, 2, 3})))
-	eq(t, []int{}, FromSeq(slices.Values([]int{})))
+	fresh := func(xs ...int) Flow[int] { return FromSeq(slices.Values(xs)) }
+	assertEqual(t, []int{1, 2, 3}, fresh(1, 2, 3).Slice())
+	assertEqual(t, []int{}, fresh().Slice())
 
-	// FromSeq(f.Seq()) round-trips.
 	f := FromFn(5, Identity).Filter(even)
 	assertEqual(t, f.Slice(), FromSeq(f.Seq()).Slice())
 
@@ -63,7 +64,7 @@ func TestFromSeq(t *testing.T) {
 	eq(t, []int{}, n)
 
 	calls := 0
-	src := func(yield func(int) bool) {
+	endless := func(yield func(int) bool) {
 		for i := 0; ; i++ {
 			calls++
 			if !yield(i) {
@@ -71,12 +72,100 @@ func TestFromSeq(t *testing.T) {
 			}
 		}
 	}
-	assertEqual(t, []int{0, 1, 2}, FromSeq(src).Take(3).Slice())
+	assertEqual(t, []int{0, 1, 2}, FromSeq(endless).Take(3).Slice())
 	assertEqual(t, 3, calls, "Take(3) must stop ranging over seq after the 3rd element")
-	assertEqual(t, Some(0), FromSeq(src).First())
+	calls = 0
+	assertEqual(t, Some(0), FromSeq(endless).First())
+	assertEqual(t, 1, calls, "First must stop ranging over seq after the 1st element")
 
-	strs := FromSeq(slices.Values([]int{1, 2, 3})).Map(strconv.Itoa).Slice()
+	strs := fresh(1, 2, 3).Map(strconv.Itoa).Slice()
 	assertEqual(t, []string{"1", "2", "3"}, strs)
+
+	direct := fresh(1, 2, 3)
+	direct.Slice()
+	msg, panicked := didPanic(func() { direct.Slice() })
+	isTrue(t, panicked, "second consumption must panic")
+	assertEqual(t, true, strings.HasPrefix(fmt.Sprint(msg), "funq: "))
+
+	source := fresh(1, 2, 3)
+	derived := source.Map(mul2).Filter(even)
+	derived.Slice()
+	_, panicked = didPanic(func() { derived.Slice() })
+	isTrue(t, panicked, "second consumption of a derived Flow must panic")
+	_, panicked = didPanic(func() { source.Count() })
+	isTrue(t, panicked, "a Flow derived from the source shares its single consumption")
+
+	cached := fresh(1, 2, 3).Cache()
+	assertEqual(t, []int{1, 2, 3}, cached.Slice())
+	assertEqual(t, []int{1, 2, 3}, cached.Slice())
+	assertEqual(t, 3, cached.Count())
+
+	once := 0
+	g := FromSeq(func(yield func(int) bool) {
+		once++
+		slices.Values([]int{1, 2, 3})(yield)
+	}).Cache()
+	g.Slice()
+	g.Reverse().Slice()
+	assertEqual(t, 1, once, "Cache must range over seq exactly once")
+}
+
+func TestFromSeqOperationsRangeOnce(t *testing.T) {
+	t.Parallel()
+	src := func() Flow[int] { return FromSeq(slices.Values([]int{5, 3, 3, 8, 1, 6})) }
+	flows := map[string]func() Flow[int]{
+		"Map":         func() Flow[int] { return src().Map(mul2) },
+		"MapIndexed":  func() Flow[int] { return src().MapIndexed(func(i, v int) int { return i + v }) },
+		"FlatMap":     func() Flow[int] { return src().FlatMap(func(v int) Flow[int] { return From(v, v) }) },
+		"Accumulate":  func() Flow[int] { return src().Accumulate(0, add) },
+		"Filter":      func() Flow[int] { return src().Filter(even) },
+		"Distinct":    func() Flow[int] { return Distinct(src()) },
+		"Drop":        func() Flow[int] { return src().Drop(2) },
+		"Take":        func() Flow[int] { return src().Take(4) },
+		"DropWhile":   func() Flow[int] { return src().DropWhile(func(v int) bool { return v > 2 }) },
+		"TakeWhile":   func() Flow[int] { return src().TakeWhile(func(v int) bool { return v > 2 }) },
+		"Reverse":     func() Flow[int] { return src().Reverse() },
+		"SortFunc":    func() Flow[int] { return src().SortFunc(cmp.Compare) },
+		"SortBy":      func() Flow[int] { return src().SortBy(Identity) },
+		"Concat":      func() Flow[int] { return src().Concat(src(), From(7)) },
+		"ConcatFirst": func() Flow[int] { return From(7).Concat(src()) },
+		"Cache":       func() Flow[int] { return src().Cache() },
+		"ZipBoth": func() Flow[int] {
+			return Zip(src(), src()).Map(func(p Pair[int, int]) int { return p.First + p.Second })
+		},
+		"ZipIndexed": func() Flow[int] { return Zip(src(), From(1, 2, 3)).Map(func(p Pair[int, int]) int { return p.Second }) },
+		"Chunk":      func() Flow[int] { return Chunk[int](4)(src()).Map(func(c []int) int { return len(c) }) },
+		"GroupBy": func() Flow[int] {
+			return GroupBy[int, int](Identity)(src()).Map(func(p Pair[int, []int]) int { return p.First })
+		},
+	}
+	terminals := map[string]func(Flow[int]){
+		"Slice":   func(f Flow[int]) { f.Slice() },
+		"Count":   func(f Flow[int]) { f.Count() },
+		"IsEmpty": func(f Flow[int]) { f.IsEmpty() },
+		"Last":    func(f Flow[int]) { f.Last() },
+		"First":   func(f Flow[int]) { f.First() },
+		"MinBy":   func(f Flow[int]) { f.MinBy(Identity) },
+		"ToMap":   func(f Flow[int]) { f.ToMap(Identity) },
+		"Reverse": func(f Flow[int]) { f.Reverse().Slice() },
+		"Take":    func(f Flow[int]) { f.Take(2).Slice() },
+		"Drop":    func(f Flow[int]) { f.Drop(2).Last() },
+		"Partition": func(f Flow[int]) {
+			m, r := f.Partition(even)
+			m.Slice()
+			r.Slice()
+		},
+		"Seq": func(f Flow[int]) { _ = slices.Collect(f.Seq()) },
+	}
+	for fname, mk := range flows {
+		for tname, term := range terminals {
+			t.Run(fname+"/"+tname, func(t *testing.T) {
+				t.Parallel()
+				val, panicked := didPanic(func() { term(mk()) })
+				isFalse(t, panicked, fmt.Sprint(val))
+			})
+		}
+	}
 }
 
 func TestZeroValueFlowIsEmpty(t *testing.T) {
@@ -1151,6 +1240,11 @@ func TestZip(t *testing.T) {
 	eq(t, []Pair[int, string]{}, Zip(From[int](), From("a")))
 	eq(t, []Pair[int, int]{{1, 10}, {2, 20}},
 		Zip(From(1, 2).asSeq(), From(10, 20, 30).asSeq()))
+	// both forward-only: also cover a longer than b and an empty b
+	eq(t, []Pair[int, int]{{1, 10}, {2, 20}},
+		Zip(From(1, 2, 3).asSeq(), From(10, 20).asSeq()))
+	eq(t, []Pair[int, int]{},
+		Zip(From(1, 2).asSeq(), From[int]().asSeq()))
 	// mixed representations: indexed a with sequential b takes the swapped-
 	// driver path, so cover both length orderings there and its mirror
 	eq(t, []Pair[int, int]{{1, 10}, {2, 20}},

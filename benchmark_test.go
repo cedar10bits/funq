@@ -248,12 +248,14 @@ func BenchmarkMapCapacity(b *testing.B) {
 // indexed side lands near the indexed floor, since it can pull that side
 // directly:
 //
-//   - idx_idx: ~13.7 ns
-//   - idx_seq: ~14.5 ns
-//   - seq_idx: ~15.7 ns
+//   - idx_idx: ~5.7 ns
+//   - idx_seq: ~8.1 ns
+//   - seq_idx: ~8.6 ns
 //
 // seq_seq, the only combination with neither side indexed, costs an order of
-// magnitude more at ~117 ns, all in iter.Pull's coroutine.
+// magnitude more at ~68 ns, all in iter.Pull's coroutine. seq_seq_first is
+// the early-exit case (~0.4 µs). docs/performance.md records why Zip keeps
+// iter.Pull rather than collecting b.
 func BenchmarkZip(b *testing.B) {
 	const n = 10_000
 	indexed := func() Flow[int] { return FromFn(n, Identity) }
@@ -276,6 +278,11 @@ func BenchmarkZip(b *testing.B) {
 			}
 		})
 	}
+	b.Run("seq_seq_first", func(b *testing.B) {
+		for b.Loop() {
+			Zip(sequential(), sequential()).First()
+		}
+	})
 }
 
 func BenchmarkIndexedFastPath(b *testing.B) {
