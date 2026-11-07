@@ -8,7 +8,9 @@ response times vary.
 - Open an issue first for anything beyond a bug fix or doc change, so the API
   direction can be agreed.
 - CI must pass: `gofumpt` (formatting), `go vet`, `golangci-lint`, and
-  `go test -race ./...`. Run these locally before pushing.
+  `go test -race -coverprofile=coverage.out ./...`, with 100% statement
+  coverage (`go tool cover -func=coverage.out`). Run these locally before
+  pushing.
 - CI fuzzes each `FuzzXxx` target for 30s on every push and pull request, and
   for 10m in its weekly run. A new target must be added to the `fuzz` job's
   matrix in `.github/workflows/ci.yml`. Run `go test -fuzz=FuzzXxx` locally to

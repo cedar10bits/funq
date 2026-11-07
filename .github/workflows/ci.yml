@@ -51,7 +51,9 @@ jobs:
           golangci-lint version
           golangci-lint run ./...
       - name: go test
-        run: go test -race ./...
+        run: |
+          go test -race -coverprofile=coverage.out ./...
+          go tool cover -func=coverage.out | awk '/^total:/ { found = 1; if ($3 != "100.0%") exit 1 } END { if (!found) exit 1 }'
 
   fuzz:
     runs-on: ubuntu-latest
