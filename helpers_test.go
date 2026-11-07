@@ -102,3 +102,14 @@ func abs(n int) int {
 	}
 	return n
 }
+
+// asSeq normalizes f to the sequential representation: a no-op if f is
+// already sequential, otherwise it pulls its elements through Seq() into a
+// fresh sequential Flow. It is Cache's counterpart for the other internal
+// representation.
+func (f Flow[T]) asSeq() Flow[T] {
+	if f.at == nil {
+		return f
+	}
+	return fromSeq(f.Seq())
+}
