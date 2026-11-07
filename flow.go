@@ -246,22 +246,19 @@ func (f Flow[T]) Seq() iter.Seq[T] {
 			}
 			return
 		}
-		if f.seq == nil {
-			return
-		}
-		for v := range f.seq {
-			if !yield(v) {
-				return
-			}
+		// Keep this inside the closure: returning f.seq early regresses
+		// indexed traversal in benchmarks.
+		if f.seq != nil {
+			f.seq(yield)
 		}
 	}
 }
 
-// walk is the body of Seq, callable without the iter.Seq closure Seq wraps it
-// in. It feeds f's elements to yield in iteration order and returns false as
-// soon as yield does, true once every element has been delivered. FlatMap
+// walk traverses f without the iter.Seq closure returned by Seq. It feeds
+// f's elements to yield in iteration order and returns false as soon as yield
+// does, true once every element has been delivered. FlatMap
 // and Concat thread their outer yield straight through walk, so a nested Flow
-// costs no per-element closure. Seq duplicates this body rather than
+// costs no per-element closure. Seq duplicates the indexed branch rather than
 // returning f.walk, which would add one alloc to every pipeline.
 func (f Flow[T]) walk(yield func(T) bool) bool {
 	if f.at != nil {

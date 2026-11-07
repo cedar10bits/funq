@@ -32,6 +32,7 @@ called out here.
   `Drop(n)` returns an empty Flow without traversing.
 - `Concat` with an input of unknown count allocates less per input and
   traverses faster.
+- Traversing a forward-only Flow, such as one built with `FromSeq`, is faster.
 - `MapIndexed` and `Zip` keep random access when their inputs are
   random-access with a statically known count, so a following `Reverse`,
   `Take`, `Drop`, or `Concat` no longer walks or materializes every element.

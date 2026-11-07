@@ -192,13 +192,14 @@ column uses `cf0b9f6`'s forward-only implementation:
 
 Indexed `MapIndexed` and `Zip` make these reverse/drop pipelines O(1)-ish,
 while full `Slice` traversal is modestly faster. The benchmark's `asSeq()`
-rows compare forward-only inputs, with both Zip inputs adding `iter.Pull`
-coroutine costs.
+rows compare forward-only inputs: current `MapIndexed.Slice` and `Zip.Slice`
+medians are 7.60 µs and 63.2 µs, respectively, with both Zip inputs adding
+`iter.Pull` coroutine costs.
 
-Zip over two forward-only inputs could collect one side instead of using
-`iter.Pull`: a full traversal of 10,000 pairs drops from about 680 µs to
-132 µs, but `First` rises from about 0.4 µs to 64 µs, so Zip keeps
-`iter.Pull`.
+Zip over two forward-only inputs keeps `iter.Pull` to stop early: five
+200 ms `BenchmarkZip` samples give 590 µs for all 10,000 pairs and 382 ns
+for `First`. The historical collect-one-side experiment took 132 µs for
+all pairs but 64 µs for `First`, making early exit much more expensive.
 
 See `Flow.Take` and `Flow.SortBy` in `flow.go` for why each implementation
 was chosen over the alternative it replaced.
@@ -316,6 +317,7 @@ each stage because the rollback may need it after the stage returns.
 > go test -bench 'BenchmarkSortByStrategies/n=(100|10000)$' -benchmem -run '^$' .
 > go test -bench 'BenchmarkSortByStrategies/n=1000000$' -benchmem -benchtime=6x -run '^$' .
 > go test -bench '^BenchmarkSortByStrategies$' -benchmem -benchtime=200ms -count=5 -run '^$' .
+> go test -bench '^BenchmarkZip$' -benchmem -count=5 -benchtime=200ms -run '^$' .
 > go test -bench '^BenchmarkIndexedFastPath$' -benchmem -count=5 -benchtime=200ms -run '^$' .
 > go test -bench '^BenchmarkSortByTraversal$' -benchmem -count=5 -benchtime=200ms -run '^$' .
 > go test -bench '^BenchmarkTrackPlay' -benchmem -run '^$' .

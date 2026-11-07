@@ -244,18 +244,18 @@ func BenchmarkMapCapacity(b *testing.B) {
 // (idx_idx, idx_seq, seq_idx, seq_seq), backing the pulled-side preference
 // explained in Zip's own implementation comment in flow.go.
 //
-// Result (Apple M2, n=10,000): per element, each combination with an
+// Result (Apple M2, five 200 ms samples, n=10,000): each combination with an
 // indexed side lands near the indexed floor, since it can pull that side
 // directly:
 //
 //   - idx_idx: ~5.7 ns
-//   - idx_seq: ~8.1 ns
-//   - seq_idx: ~8.6 ns
+//   - idx_seq: ~6.7 ns
+//   - seq_idx: ~7.4 ns
 //
 // seq_seq, the only combination with neither side indexed, costs an order of
-// magnitude more at ~68 ns, all in iter.Pull's coroutine. seq_seq_first is
-// the early-exit case (~0.4 µs). docs/performance.md records why Zip keeps
-// iter.Pull rather than collecting b.
+// magnitude more at ~59 ns, including iter.Pull's coroutine costs.
+// seq_seq_first is the early-exit case (~0.4 µs). docs/performance.md records
+// why Zip keeps iter.Pull rather than collecting b.
 func BenchmarkZip(b *testing.B) {
 	const n = 10_000
 	indexed := func() Flow[int] { return FromFn(n, Identity) }
